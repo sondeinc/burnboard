@@ -40,7 +40,7 @@ context resent on every turn.
 Requires Node ≥ 18. Run `npm install` before starting the monitor.
 
 ```bash
-git clone https://github.com/kwpoore-lab/burnboard
+git clone https://github.com/sondeinc/burnboard
 cd burnboard
 npm install
 node server.js            # -> http://localhost:4317
