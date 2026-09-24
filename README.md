@@ -48,10 +48,10 @@ node server.js            # -> http://localhost:4317
 
 Options: `--port 8080`, `--root /path/to/.codex`, `--claude-root /path/to/.claude`, `--no-ai`, `--local-tokens`.
 
-`--no-ai` (or `BURNBOARD_NO_AI=1`) switches off the model layer completely: no assistant CLI is
-probed for, none is offered in the UI, and `/api/deepen` refuses with 403 — so burnboard cannot
-spend a token on your behalf even by accident. Nothing else changes. Findings are measured from
-your own history and never needed a model.
+`--no-ai` (or `BURNBOARD_NO_AI=1`) disables **Dive deeper**, the optional feature that runs
+a Codex or Claude Code agent to analyze the evidence behind a token-usage finding. Burnboard will
+not launch an agent or spend tokens on your behalf; the dashboard and its measured findings still
+work.
 
 ### Optional offline text-token counting
 
