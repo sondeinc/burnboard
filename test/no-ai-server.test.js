@@ -37,6 +37,11 @@ test('--no-ai server serves local counting metadata and refuses model analysis',
     assert.equal(economy.textTokenPolicy.local, true);
     assert.equal(economy.textTokenPolicy.tokenizer, 'js-tiktoken@1.0.21');
     assert.deepEqual(economy.textTokenMeasurements, {});
+    const facets = await (await fetch(`${url}/api/facets`)).json();
+    assert.deepEqual(facets.modelGroups, [
+      { id: 'codex', label: 'Codex', models: [] },
+      { id: 'claude', label: 'Claude', models: [] },
+    ]);
     const page = await (await fetch(url)).text();
     assert.match(page, /logged text only/);
   } finally {

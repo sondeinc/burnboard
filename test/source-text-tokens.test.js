@@ -50,3 +50,27 @@ test('Claude never uses the OpenAI tokenizer; request billing remains recorded s
   assert.equal(result.outTokens, 3);
   assert.equal(result.totals.billed, 15);
 });
+
+test('Claude model switches retain exact per-model usage and command custody', async () => {
+  const rows = [
+    { type: 'assistant', message: { model: 'claude-opus-5-5',
+      usage: { input_tokens: 2, cache_creation_input_tokens: 8, cache_read_input_tokens: 90, output_tokens: 10 },
+      content: [{ type: 'tool_use', id: 'opus-call', name: 'Read', input: { file_path: '/tmp/opus.md' } }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'opus-call', content: 'opus output' }] } },
+    { type: 'assistant', message: { model: 'claude-sonnet-5-5',
+      usage: { input_tokens: 3, cache_creation_input_tokens: 7, cache_read_input_tokens: 40, output_tokens: 5 },
+      content: [{ type: 'tool_use', id: 'sonnet-call', name: 'Read', input: { file_path: '/tmp/sonnet.md' } }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'sonnet-call', content: 'sonnet output' }] } },
+  ];
+  const result = await scan(claude, rows, false);
+
+  assert.equal(result.model, 'claude-sonnet-5-5');
+  assert.deepEqual(result.models, ['claude-opus-5-5', 'claude-sonnet-5-5']);
+  assert.equal(result.totals.billed, 165);
+  assert.equal(result.modelUsage['claude-opus-5-5'].totals.billed, 110);
+  assert.equal(result.modelUsage['claude-sonnet-5-5'].totals.billed, 55);
+  assert.equal(result.modelUsage['claude-opus-5-5'].toolCalls, 1);
+  assert.equal(result.modelUsage['claude-sonnet-5-5'].toolCalls, 1);
+  assert.equal(result.recentCmds[0].m, 'claude-opus-5-5');
+  assert.equal(result.recentCmds[1].m, 'claude-sonnet-5-5');
+});

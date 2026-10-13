@@ -123,6 +123,7 @@
   .chart { width: 100%; display: block; }
   .chart text { fill: var(--dim); font: 10px var(--mono); }
   .cols { display: grid; grid-template-columns: 1.35fr 1fr; gap: 14px; margin-top: 12px; }
+  .cols > div { min-width: 0; }
   @media (max-width: 860px) { .cols { grid-template-columns: 1fr; } }
   .subtabs { display: inline-flex; gap: 2px; margin-left: 10px; vertical-align: middle; }
   .subtabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--dim);
@@ -176,7 +177,13 @@
   .cmdscroll { max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
-  #live { display: flex; flex-direction: column; gap: 8px; max-width: 620px; }
+  #live { display: flex; flex-direction: column; gap: 8px; }
+  /* Keep collapsed secondary sessions compact, but let an opened session use
+     the same detail width as a featured session. The cap belongs on each card,
+     not on their shared container, so one expanded card can grow independently. */
+  #live > .focus-wrap, #live > .card-wrap { width: 100%; max-width: 620px; }
+  #live > .focus-wrap:has(.focus.expanded),
+  #live > .card-wrap:has(.focus.expanded) { max-width: none; }
   .card-wrap { position: relative; margin-bottom: 8px; }
   .card-wrap .tree-tick { position: absolute; left: -13px; top: 20px; width: 11px; height: 1px; background: var(--border); }
   .card-wrap .tree-tick::before { content: ''; position: absolute; left: 0; bottom: 0; width: 1px; height: 26px; background: var(--border); }
@@ -195,6 +202,7 @@
   .empty { color: var(--dim); padding: 16px 0; }
   select { background: var(--panel); color: var(--fg); border: 1px solid var(--border);
     border-radius: 5px; padding: 5px 8px; font: inherit; }
+  select.repo-facet { max-width: 160px; }
 
   #overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; z-index: 20; }
   #overlay.on { display: block; }
@@ -378,6 +386,19 @@
   .ai-p b { color: var(--fg); }
   .ai-fix { margin: 6px 0; padding-left: 18px; font-size: 12.5px; line-height: 1.6; }
   .ai-fix li { margin-bottom: 4px; }
+  .ai-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .ai-actions .ai-tag { margin-right: auto; }
+  button.fixprompt, button.copyfix { background: var(--panel2); color: var(--accent);
+    border: 1px solid var(--border); border-radius: 5px; padding: 3px 9px;
+    font: 11px var(--mono); cursor: pointer; }
+  button.fixprompt:hover, button.copyfix:hover { color: var(--fg); border-color: var(--accent); }
+  .fixprompt-box { margin-top: 9px; padding-top: 9px; border-top: 1px dashed var(--border); }
+  .fixprompt-head { display: flex; align-items: center; gap: 8px; margin-bottom: 5px;
+    color: var(--dim); font-size: 11px; }
+  .fixprompt-head button { margin-left: auto; }
+  .fixprompt-text { display: block; width: 100%; min-height: 260px; resize: vertical;
+    background: #0b0f16; color: var(--fg); border: 1px solid var(--border); border-radius: 5px;
+    padding: 8px 10px; font: 11px/1.5 var(--mono); }
   .ai-raw { font: 10.5px/1.5 var(--mono); color: var(--dim); white-space: pre-wrap;
     margin-top: 6px; max-height: 120px; overflow: auto; }
 
@@ -409,9 +430,6 @@
 <header>
   <div class="brand">
     <h1><a href="https://github.com/kwpoore-lab/burnboard" target="_blank" rel="noopener">burnboard</a></h1>
-    <select id="repoSel" class="facet" title="which repository's sessions to show">
-      <option value="">all repos</option>
-    </select>
   </div>
   <nav id="tabs">
     <a href="#running" data-tab="running" class="on">Activity</a>
@@ -431,6 +449,7 @@
     <div id="usageSummary" class="tgrand" hidden></div>
     <h2>Activity
       <span style="float:right;font-weight:400;text-transform:none;letter-spacing:0">
+        <select id="runRepo" class="facet repo-facet" title="repository"></select>
         <button id="livePause" type="button" title="Pause live updates so you can scroll — nothing is lost, updates just queue">⏸ Pause</button>
         sort
         <span class="seg" id="runSort">
@@ -449,7 +468,8 @@
         <span class="seg" id="histSeg">
           <button data-p="hour">Hour</button><button data-p="day" class="on">Day</button><button data-p="week">Week</button><button data-p="month">Month</button>
         </span>
-        <select id="histModel" class="facet" title="model"></select>
+        <select id="histRepo" class="facet repo-facet" title="repository"></select>
+        <select id="histModel" class="facet" title="model or vendor"></select>
         <select id="histEffort" class="facet" title="effort"></select>
         <label style="margin-left:12px;font-size:12px;color:var(--dim)">
           <input type="checkbox" id="histSub" checked> subagents</label>
@@ -464,7 +484,8 @@
         <span class="seg" id="periodSeg">
           <button data-p="hour">Hour</button><button data-p="day" class="on">Day</button><button data-p="week">Week</button><button data-p="month">Month</button>
         </span>
-        <select id="trModel" class="facet" title="model"></select>
+        <select id="trRepo" class="facet repo-facet" title="repository"></select>
+        <select id="trModel" class="facet" title="model or vendor"></select>
         <select id="trEffort" class="facet" title="effort"></select>
         <label style="margin-left:12px;font-size:12px;color:var(--dim)">
           <input type="checkbox" id="subToggle"> include subagents</label>
@@ -479,6 +500,7 @@
         <span class="seg" id="agRange">
           <button data-r="all" class="on">All time</button><button data-r="30d">30 days</button><button data-r="7d">7 days</button>
         </span>
+        <select id="agRepo" class="facet repo-facet" title="repository"></select>
         <span class="seg" id="agBy" style="margin-left:10px">
           <button data-b="agent" class="on">Agent type</button><button data-b="role">Role</button><button data-b="model">Model</button><button data-b="effort">Effort</button><button data-b="project">Project</button>
         </span>
@@ -495,7 +517,8 @@
         <span class="seg" id="ecoRange">
           <button data-r="all" class="on">All time</button><button data-r="30d">30 days</button><button data-r="7d">7 days</button>
         </span>
-        <select id="ecoModel" class="facet" title="model"></select>
+        <select id="ecoRepo" class="facet repo-facet" title="repository"></select>
+        <select id="ecoModel" class="facet" title="model or vendor"></select>
         <select id="ecoEffort" class="facet" title="effort"></select>
         <label style="margin-left:12px;font-size:12px;color:var(--dim)">
           <input type="checkbox" id="ecoSub" checked> include subagents</label>
@@ -559,6 +582,45 @@ function modelStyle(model, source) {
   }
   if (!color) color = `hsl(${hashHue(m)} 62% 66%)`;
   return { color, mark: review ? CODEX_MARK : claude ? CLAUDE_MARK : OPENAI_MARK, label: model };
+}
+const MODEL_VENDOR_PREFIX = 'vendor:';
+const MODEL_VENDOR_FAMILIES = [
+  { id: 'codex', sources: ['codex', 'codex-cli', 'openai', 'openai-codex'], prefixes: ['gpt-', 'codex-', 'chatgpt-', 'o1-', 'o3-', 'o4-'],
+    names: ['o1', 'o3', 'o4', 'codex-auto-review'] },
+  { id: 'claude', sources: ['claude', 'claude-code', 'anthropic'], prefixes: ['claude-', 'opus-', 'sonnet-', 'haiku-'],
+    names: ['opus', 'sonnet', 'haiku'] },
+];
+function vendorForSource(source) {
+  const value = String(source || '').trim().toLowerCase();
+  const family = MODEL_VENDOR_FAMILIES.find(entry => entry.sources.includes(value));
+  return family ? family.id : value;
+}
+function vendorForModel(model) {
+  const value = String(model || '').trim().toLowerCase();
+  const family = MODEL_VENDOR_FAMILIES.find(entry => entry.names.includes(value)
+    || entry.prefixes.some(prefix => value.startsWith(prefix)));
+  return family ? family.id : '';
+}
+function vendorForSession(session) {
+  if (session.autoReview || session.agentKind === 'guardian') return 'codex';
+  return vendorForModel(session.model || session.primaryModel)
+    || vendorForSource(session.vendor || session.source);
+}
+const modelVendor = (value) => String(value || '').startsWith(MODEL_VENDOR_PREFIX)
+  ? vendorForSource(String(value).slice(MODEL_VENDOR_PREFIX.length)) : '';
+function modelFacetStyle(value) {
+  const vendor = modelVendor(value);
+  if (!vendor) return modelStyle(value);
+  if (vendor === 'claude') return { color: '#e8875a', mark: CLAUDE_MARK, label: vendor };
+  if (vendor === 'codex') return { color: '#3fb950', mark: OPENAI_MARK, label: vendor };
+  return { color: `hsl(${hashHue(vendor)} 62% 66%)`, mark: '', label: vendor };
+}
+function matchesModelFacet(session, value) {
+  if (!value) return true;
+  const vendor = modelVendor(value);
+  if (vendor) return vendorForSession(session) === vendor;
+  return (session.models || [session.model]).includes(value)
+    || (value === 'codex-auto-review' && session.autoReview);
 }
 // full badge, mark + name, tinted with the model colour
 function modelBadge(model, source) {
@@ -647,8 +709,8 @@ $('#livePause').addEventListener('click', () => {
 function render(snap) {
   lastSnap = snap;
   $('#conn').classList.add('ok');
-  const threads = (snap.threads || []).filter(t => (!srcFilter || t.source === srcFilter)
-    && (!repoFilter || t.repoKey === repoFilter));
+  const threads = (snap.threads || []).filter(t => (!srcFilter || vendorForSession(t) === srcFilter)
+    && (!runRepo || t.repoKey === runRepo));
   const running = threads.filter(t => t.status === 'running');
   const heads = agentLimits(snap).map(l => {
     const w = tightestWindow(l.windows);
@@ -738,7 +800,7 @@ const SRC_LABEL = { codex: 'Codex', claude: 'Claude Code' };
 const SRC_MARK = { codex: OPENAI_MARK, claude: CLAUDE_MARK };
 const srcBadge = (id) => id ? `<span class="badge src-${esc(id)}">${SRC_MARK[id] || ''}${esc(SRC_LABEL[id] || id)}</span>` : '';
 let srcFilter = '';        // '' = all agents | 'codex' | 'claude'
-let repoFilter = '';       // '' = all repos, else a repo name from /api/facets
+let runRepo = '';          // Activity has its own repository scope
 let runSort = 'started';   // 'started' | 'tokens', both descending
 let lastRunOrder = [];     // root ids in the order last rendered
 
@@ -1000,7 +1062,8 @@ function focusBlock(t, depth) {
     : t.id.slice(0, 8));
   const badges = [];
   badges.push(srcBadge(t.source));
-  if (t.primaryModel) badges.push(modelBadge(t.primaryModel, t.source));
+  const usedModels = (t.models || [t.primaryModel]).filter(model => model && !model.startsWith('<'));
+  for (const model of usedModels) badges.push(modelBadge(model, t.source));
   if (t.effort) badges.push(`<span class="badge">effort:${esc(t.effort)}</span>`);
   if (t.serviceTier) badges.push(`<span class="badge tier">${esc(t.serviceTier)}</span>`);
   if (t.autoReview) badges.push(`<span class="badge review">auto-review</span>`);
@@ -1229,19 +1292,31 @@ function kfmt(v) {
 let histAll = [];              // all sessions from /api/history
 let histPeriod = 'day';
 let histSub = true;
-let histModel = '', histEffort = '';
+let histModel = '', histEffort = '', histRepo = '';
 // same drill trail as Trends, but computed locally — no fetch per level
 let histTrail = [];            // [{ period, from, to, sel }]
 let histPoll = null;
 
 // sessions passing the current subagent / model / effort filters
+function historyModelSlice(session) {
+  if (!histModel || modelVendor(histModel)) return session;
+  const usage = session.modelUsage && session.modelUsage[histModel];
+  return usage ? {
+    ...session,
+    model: histModel,
+    models: [histModel],
+    modelUsage: { [histModel]: usage },
+    tokens: usage.tokens,
+    toolCalls: usage.toolCalls,
+  } : session;
+}
 function histFiltered() {
   return histAll.filter(s =>
-    (!srcFilter || s.source === srcFilter)
-    && (!repoFilter || s.repoKey === repoFilter)
+    (!srcFilter || vendorForSession(s) === srcFilter)
+    && (!histRepo || s.repoKey === histRepo)
     && (histSub || !s.isSubagent)
-    && (!histModel || s.model === histModel || (histModel === 'codex-auto-review' && s.autoReview))
-    && (!histEffort || s.effort === histEffort));
+    && matchesModelFacet(s, histModel)
+    && (!histEffort || s.effort === histEffort)).map(historyModelSlice);
 }
 let histSort = { col: 'tokens', dir: 'desc' };
 const HIST_COLS = [
@@ -1249,7 +1324,7 @@ const HIST_COLS = [
   { key: 'thread', label: 'Thread', get: t => (t.title || t.agentNickname || t.id).toLowerCase() },
   { key: 'prompt', label: 'Prompt', get: t => (t.prompt || '').toLowerCase() },
   { key: 'project', label: 'Project', get: t => (t.project || '').toLowerCase() },
-  { key: 'model', label: 'Model', get: t => (t.model || '').toLowerCase() },
+  { key: 'model', label: 'Model', get: t => (t.models || [t.model]).filter(Boolean).join(' ').toLowerCase() },
   { key: 'agent', label: 'Agent', get: t => t.source || '' },
   { key: 'kind', label: 'Kind', get: t => (t.isSubagent ? 'subagent' : 'main') },
   { key: 'tokens', label: 'Tokens', num: true, get: t => t.tokens || 0 },
@@ -1335,7 +1410,7 @@ async function loadHistory() {
     return;
   }
   histAll = r.sessions || [];
-  fillFacet($('#histModel'), r.facets && r.facets.models, histModel, 'all models', true);
+  fillModelFacet($('#histModel'), r.facets, histModel);
   fillFacet($('#histEffort'), r.facets && r.facets.efforts, histEffort, 'all efforts');
   histResetTrail();
   renderHistory();
@@ -1434,12 +1509,17 @@ function renderHistory() {
       const kind = kd + (t.agentNickname ? ' · ' + esc(t.agentNickname) : '');
       // guardian rows carry no model of their own — label them as Codex's reviewer
       const guardian = !t.model && (t.autoReview || t.isSubagent && t.agentKind === 'guardian');
-      const mdl = t.model || (guardian ? 'codex-auto-review' : '');
-      const mlabel = t.model || (guardian ? 'codex reviewer' : '');
+      const usedModels = (t.models || [t.model]).filter(model => model && !model.startsWith('<'));
+      if (!usedModels.length && guardian) usedModels.push('codex-auto-review');
       const rest = [t.effort ? 'effort:' + t.effort : null,
         t.autoReview && !guardian ? '+review' : null].filter(Boolean).join(' ');
-      const models = mdl
-        ? `${modelMark(mdl, t.source)}<span style="color:${modelStyle(mdl, t.source).color}">${esc(mlabel)}</span>${rest ? ' ' + esc(rest) : ''}`
+      const models = usedModels.length
+        ? usedModels.map(model => {
+          const label = model === 'codex-auto-review' ? 'codex reviewer' : model;
+          const usage = t.modelUsage && t.modelUsage[model];
+          return `${modelMark(model, t.source)}<span style="color:${modelStyle(model, t.source).color}">${esc(label)}</span>${
+            usage ? ` <span style="color:var(--dim)">${kfmtN(usage.tokens)} tok</span>` : ''}`;
+        }).join('<br>') + (rest ? ' ' + esc(rest) : '')
         : (esc(rest) || '–');
       const par = t.parent && (t.parent.title || t.parent.id);
       return `<tr onclick="openDetail('${t.id}')" style="cursor:pointer">
@@ -1448,7 +1528,7 @@ function renderHistory() {
         <td style="max-width:280px;color:var(--dim)">${esc(short(t.prompt, 100))}</td>
         <td>${esc(t.repo || t.project || '')}${t.branch ? ' @ ' + esc(t.branch) : ''}</td>
         <td>${models}</td>
-        <td>${srcBadge(t.source)}</td>
+        <td>${srcBadge(vendorForSession(t))}</td>
         <td>${kind}</td>
         <td class="num">${fmt(t.tokens)}${t.compactions ? ' ⤺' : ''}</td>
         <td class="num">${t.toolCalls}</td>
@@ -1647,41 +1727,70 @@ let trendData = null;
 // tables read from the deepest level that has a bucket picked.
 let trendTrail = [];
 let trendPoll = null;
-let trModel = '', trEffort = '';
+let trModel = '', trEffort = '', trRepo = '';
 // The tables pick *what* is plotted; the chart stack picks *when*. Only one entity
 // at a time — two would need an intersection the rollups do not carry.
 let trendEntity = null;      // { kind: 'cmd' | 'prompt', key }
 let trendEntityDropped = '';  // name of a row filter auto-cleared by the last pick
 
 // populate a <select> with "All …" + options, preserving the current value
-function fillFacet(sel, values, cur, allLabel, isModel) {
+function fillFacet(sel, values, cur, allLabel) {
   if (!sel) return;
   const want = cur || '';
   sel.innerHTML = `<option value="">${allLabel}</option>` +
-    (values || []).map(v => `<option value="${attr(v)}"${v === want ? ' selected' : ''}${
-      isModel ? ` style="color:${modelStyle(v).color}"` : ''}>${esc(v)}</option>`).join('');
+    (values || []).map(v => `<option value="${attr(v)}"${v === want ? ' selected' : ''}>${esc(v)}</option>`).join('');
   sel.value = want;
-  if (isModel) facetMark(sel, want);
 }
-// a <select> can't hold an SVG, so the mark for the chosen model sits beside it
-function facetMark(sel, model) {
+
+function legacyModelGroups(facets) {
+  const groups = new Map();
+  for (const model of (facets && facets.models) || []) {
+    const id = vendorForModel(model) || 'other';
+    if (!groups.has(id)) groups.set(id, { id, label: id === 'claude' ? 'Claude' : id === 'codex' ? 'Codex' : id, models: [] });
+    groups.get(id).models.push(model);
+  }
+  return [...groups.values()];
+}
+
+function modelFacetOptions(facets, cur, allLabel = 'all models') {
+  const groups = facets && Array.isArray(facets.modelGroups) ? facets.modelGroups : legacyModelGroups(facets);
+  return `<option value="">${allLabel}</option>` + groups.map(group => {
+    const vendorValue = MODEL_VENDOR_PREFIX + group.id;
+    const vendorStyle = modelFacetStyle(vendorValue);
+    const models = (group.models || []).map(model => `<option value="${attr(model)}"${model === cur ? ' selected' : ''}
+      style="color:${modelStyle(model, group.id).color}">${esc(model)}</option>`).join('');
+    return `<optgroup label="${attr(group.label)}"><option value="${attr(vendorValue)}"${vendorValue === cur ? ' selected' : ''}
+      style="color:${vendorStyle.color}">All ${esc(group.label)} models</option>${models}</optgroup>`;
+  }).join('');
+}
+
+function fillModelFacet(sel, facets, cur) {
+  if (!sel) return;
+  const want = cur || '';
+  sel.innerHTML = modelFacetOptions(facets, want);
+  sel.value = want;
+  facetMark(sel, want);
+}
+
+// a <select> can't hold an SVG, so the mark for the chosen model or vendor sits beside it
+function facetMark(sel, value) {
   let el = sel.previousElementSibling;
   if (!el || !el.classList.contains('facetmark')) {
     el = document.createElement('span');
     el.className = 'facetmark';
     sel.parentNode.insertBefore(el, sel);
   }
-  const mi = modelStyle(model);
+  const mi = modelFacetStyle(value);
   el.innerHTML = mi.mark || '';
   el.style.color = mi.color;
-  sel.style.color = model ? mi.color : '';
+  sel.style.color = value ? mi.color : '';
 }
-const facetQS = (m, e) => (m ? `&model=${encodeURIComponent(m)}` : '') + (e ? `&effort=${encodeURIComponent(e)}` : '')
+const facetQS = (m, e, repo) => (m ? `&model=${encodeURIComponent(m)}` : '') + (e ? `&effort=${encodeURIComponent(e)}` : '')
   + (srcFilter ? `&source=${encodeURIComponent(srcFilter)}` : '')
-  + (repoFilter ? `&repo=${encodeURIComponent(repoFilter)}` : '');
+  + (repo ? `&repo=${encodeURIComponent(repo)}` : '');
 
 function trendQS(lvl) {
-  return `/api/trends?period=${lvl.period}${trendSub ? '&subagents=1' : ''}${facetQS(trModel, trEffort)}`
+  return `/api/trends?period=${lvl.period}${trendSub ? '&subagents=1' : ''}${facetQS(trModel, trEffort, trRepo)}`
     + (lvl.from != null ? `&from=${lvl.from}&to=${lvl.to}` : '');
 }
 
@@ -1699,7 +1808,7 @@ async function loadTrends() {
   }
   trendTrail[0].data = r;
   trendData = r;
-  fillFacet($('#trModel'), r.facets && r.facets.models, trModel, 'all models', true);
+  fillModelFacet($('#trModel'), r.facets, trModel);
   fillFacet($('#trEffort'), r.facets && r.facets.efforts, trEffort, 'all efforts');
   renderTrends();
 }
@@ -2095,7 +2204,7 @@ let ecoRange = 'all';
 let ecoSub = true;
 let ecoData = null;
 let ecoPoll = null;
-let ecoModel = '', ecoEffort = '';
+let ecoModel = '', ecoEffort = '', ecoRepo = '';
 const ecoCmdOpen = new Set();
 
 // plain-language notes for the tools/commands agents use most
@@ -2143,7 +2252,7 @@ function ctGet(base) {
   return ctState.get(base);
 }
 const ctQS = (base, s, lvl) =>
-  `/api/command?base=${encodeURIComponent(base)}&period=${lvl.period}&subagents=${s.sub ? 1 : 0}${facetQS(s.model, s.effort)}`
+  `/api/command?base=${encodeURIComponent(base)}&period=${lvl.period}&subagents=${s.sub ? 1 : 0}${facetQS(s.model, s.effort, ecoRepo)}`
   + (lvl.from != null ? `&from=${lvl.from}&to=${lvl.to}` : '');
 
 async function ctLoad(base) {
@@ -2227,15 +2336,16 @@ function ctPanel(base) {
   const fac = (s.data && s.data.facets) || { models: [], efforts: [] };
   const facSel = (kind, cur, vals, allLabel) => {
     const isModel = kind === 'model';
-    return `${isModel && cur ? modelMark(cur) : ''}<select data-ct-${kind} class="facet"${
-      isModel && cur ? ` style="color:${modelStyle(cur).color}"` : ''}>
-    <option value="">${allLabel}</option>${vals.map(v => `<option value="${attr(v)}"${v === cur ? ' selected' : ''}${
-      isModel ? ` style="color:${modelStyle(v).color}"` : ''}>${esc(v)}</option>`).join('')}</select>`;
+    const style = isModel ? modelFacetStyle(cur) : null;
+    const options = isModel ? modelFacetOptions(vals, cur, allLabel)
+      : `<option value="">${allLabel}</option>${vals.map(v => `<option value="${attr(v)}"${v === cur ? ' selected' : ''}>${esc(v)}</option>`).join('')}`;
+    return `${isModel && cur && style.mark ? `<span class="mmark" style="color:${style.color}">${style.mark}</span>` : ''}<select data-ct-${kind} class="facet"${
+      isModel && cur ? ` style="color:${style.color}"` : ''}>${options}</select>`;
   };
   const ctrls = `<div class="ct-ctrls" data-ct-base="${esc(base)}">
     ${seg('period', s.period, [{ k: 'hour', label: 'Hour' }, { k: 'day', label: 'Day' }, { k: 'week', label: 'Week' }, { k: 'month', label: 'Month' }])}
     ${seg('metric', s.metric, CT_METRICS)}
-    ${facSel('model', s.model, fac.models, 'all models')}
+    ${facSel('model', s.model, fac, 'all models')}
     ${facSel('effort', s.effort, fac.efforts, 'all efforts')}
     <label style="font-size:11px;color:var(--dim)"><input type="checkbox" data-ct-sub ${s.sub ? 'checked' : ''}> subagents</label>
   </div>`;
@@ -2454,7 +2564,7 @@ document.addEventListener('click', (e) => {
 // ---------------------------------------------------------------------------
 // Agents — spend cut by who spent it
 // ---------------------------------------------------------------------------
-let agData = null, agRange = 'all', agBy = 'agent', agSub = true, agPoll = null;
+let agData = null, agRange = 'all', agBy = 'agent', agSub = true, agRepo = '', agPoll = null;
 const agOpen = new Set();
 
 const CLASS_COLOR = {
@@ -2476,7 +2586,7 @@ async function loadAgents() {
   const el = $('#agents');
   const r = await fetch(`/api/agents?range=${agRange}&by=${agBy}&subagents=${agSub ? 1 : 0}`
     + (srcFilter ? `&source=${encodeURIComponent(srcFilter)}` : '')
-    + (repoFilter ? `&repo=${encodeURIComponent(repoFilter)}` : '')).then(x => x.json());
+    + (agRepo ? `&repo=${encodeURIComponent(agRepo)}` : '')).then(x => x.json());
   if (r.building) {
     const p = r.progress || {};
     el.innerHTML = `<div class="empty">Building rollup cache… ${p.done || 0} / ${p.total || '?'} sessions</div>`;
@@ -2661,10 +2771,11 @@ $('#agSub').addEventListener('change', (e) => { agSub = e.target.checked; loadAg
 let adviceData = null;
 let ecoQS = '';
 const deepened = new Map();   // finding id -> model annotation, kept across re-renders
+const fixPromptOpen = new Set();
 
 async function loadEconomy() {
   const el = $('#economy');
-  const qs = `range=${ecoRange}&subagents=${ecoSub ? 1 : 0}${facetQS(ecoModel, ecoEffort)}`;
+  const qs = `range=${ecoRange}&subagents=${ecoSub ? 1 : 0}${facetQS(ecoModel, ecoEffort, ecoRepo)}`;
   ecoQS = qs;
   const r = await fetch(`/api/economy?${qs}`).then(x => x.json());
   if (r.building) {
@@ -2674,7 +2785,7 @@ async function loadEconomy() {
     return;
   }
   ecoData = r;
-  fillFacet($('#ecoModel'), r.facets && r.facets.models, ecoModel, 'all models', true);
+  fillModelFacet($('#ecoModel'), r.facets, ecoModel);
   fillFacet($('#ecoEffort'), r.facets && r.facets.efforts, ecoEffort, 'all efforts');
   renderEconomy();
   // findings describe the same slice, so they follow the same filters
@@ -2732,7 +2843,7 @@ function findingsHTML(a) {
       </div>
       <div class="f-detail">${esc(f.detail)}</div>
       <ul class="f-fix">${f.remedies.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-      ${!runners.length || f.deepenable === false ? '' : `<div class="f-deep">${deepened.has(f.id) ? deepHTML(deepened.get(f.id))
+      ${!runners.length || f.deepenable === false ? '' : `<div class="f-deep">${deepened.has(f.id) ? deepHTML(deepened.get(f.id), f.id)
         : `<button class="deepen" data-deepen="${attr(f.id)}">dive deeper →</button>`}</div>`}
     </div>`).join('')}`;
 }
@@ -2740,10 +2851,43 @@ function findingsHTML(a) {
 // Everything above this block is measured. Everything inside it is a model's
 // reading of the commands behind that measurement — labelled as such, and
 // carrying no numbers of its own.
-function deepHTML(d) {
+function localFixPrompt(id, d) {
+  if (d.fixPrompt) return d.fixPrompt;
+  const finding = adviceData && (adviceData.findings || []).find(f => f.id === id);
+  if (!finding) return '';
+  const trusted = !(d.flagged || []).length;
+  const fixes = trusted && (d.fix || []).length ? d.fix : finding.remedies || [];
+  const interpretation = trusted
+    ? `What the agent was doing: ${d.pattern || 'Not established.'}\nWhy it costs: ${d.why || 'Not established.'}`
+    : 'The model interpretation was omitted because it contained figures unsupported by the evidence.';
+  return `Fix the following Burnboard finding in the current repository.
+
+FINDING
+${finding.title}
+
+MEASURED BASELINE
+${finding.detail}
+
+DIVE-DEEPER INTERPRETATION
+${interpretation}
+
+CANDIDATE CHANGES
+${fixes.map(x => '- ' + x).join('\n') || '- Determine the smallest concrete change supported by the finding.'}
+
+REQUIREMENTS
+- Inspect the relevant implementation and confirm the root cause before editing.
+- Implement the smallest durable fix and preserve unrelated behavior.
+- Add or update focused regression coverage and run relevant validation.
+- Report changed files, validation results, and remaining limitations.
+- Do not invent additional quantities or savings estimates.`;
+}
+
+function deepHTML(d, id = '') {
   if (d.pending) return '<div class="ai pending">reading the commands behind this finding…</div>';
   if (d.error) return `<div class="ai err">Couldn't read this one — ${esc(d.error)}${
     d.raw ? `<div class="ai-raw">${esc(String(d.raw).slice(-400))}</div>` : ''}</div>`;
+  const prompt = localFixPrompt(id, d);
+  const open = prompt && fixPromptOpen.has(id);
   return `<div class="ai">
     <div class="ai-tag">read by ${esc((d.ranBy && d.ranBy.runner) || 'a model')}${
       d.ranBy && d.ranBy.model && d.ranBy.model !== 'default' ? ' · ' + esc(d.ranBy.model) : ''
@@ -2755,7 +2899,16 @@ function deepHTML(d) {
     <p class="ai-p"><b>What it was doing.</b> ${esc(d.pattern || '')}</p>
     <p class="ai-p"><b>Why it costs.</b> ${esc(d.why || '')}</p>
     ${(d.fix || []).length ? `<ul class="ai-fix">${d.fix.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
-    <div class="ai-tag">confidence: ${esc(d.confidence || 'unknown')}</div>
+    <div class="ai-actions">
+      <div class="ai-tag">confidence: ${esc(d.confidence || 'unknown')}</div>
+      ${prompt ? `<button type="button" class="fixprompt" data-fix-prompt="${attr(id)}"
+        title="Build a ready-to-copy implementation prompt without another model call">${open ? 'hide fix prompt' : 'generate fix prompt'}</button>` : ''}
+    </div>
+    ${open ? `<div class="fixprompt-box">
+      <div class="fixprompt-head"><span>Ready-to-copy implementation prompt · generated locally</span>
+        <button type="button" class="copyfix" data-copy-fix-prompt="${attr(id)}">copy prompt</button></div>
+      <textarea class="fixprompt-text" readonly spellcheck="false">${esc(prompt)}</textarea>
+    </div>` : ''}
   </div>`;
 }
 
@@ -2772,13 +2925,51 @@ document.addEventListener('change', (e) => {
   $('#deepEffort').innerHTML = effortOpts(r && r.efforts);
 });
 
+function legacyCopy(text) {
+  const el = document.createElement('textarea');
+  el.value = text;
+  el.style.position = 'fixed'; el.style.opacity = '0';
+  document.body.appendChild(el); el.select();
+  try { return document.execCommand('copy'); }
+  catch (_) { return false; }
+  finally { el.remove(); }
+}
+
+function markCopied(button) {
+  const old = button.textContent;
+  button.textContent = 'copied';
+  setTimeout(() => { if (button.isConnected) button.textContent = old; }, 1400);
+}
+
+document.addEventListener('click', (e) => {
+  const toggle = e.target.closest('[data-fix-prompt]');
+  if (toggle) {
+    const id = toggle.dataset.fixPrompt;
+    if (fixPromptOpen.has(id)) fixPromptOpen.delete(id); else fixPromptOpen.add(id);
+    const host = toggle.closest('.f-deep');
+    if (host && deepened.has(id)) host.innerHTML = deepHTML(deepened.get(id), id);
+    return;
+  }
+  const copy = e.target.closest('[data-copy-fix-prompt]');
+  if (!copy) return;
+  const id = copy.dataset.copyFixPrompt;
+  const d = deepened.get(id);
+  const prompt = d && localFixPrompt(id, d);
+  if (!prompt) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(prompt).then(() => markCopied(copy)).catch(() => {
+      if (legacyCopy(prompt)) markCopied(copy);
+    });
+  } else if (legacyCopy(prompt)) markCopied(copy);
+});
+
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-deepen]');
   if (!b) return;
   const id = b.dataset.deepen;
   deepened.set(id, { pending: true });
   const slot = b.closest('.f-deep');
-  if (slot) slot.innerHTML = deepHTML({ pending: true });
+  if (slot) slot.innerHTML = deepHTML({ pending: true }, id);
   const runner = ($('#deepRunner') || {}).value || 'claude';
   const model = ($('#deepModel') || {}).value || '';
   const effort = ($('#deepEffort') || {}).value || '';
@@ -2793,7 +2984,7 @@ document.addEventListener('click', (e) => {
     .catch((err) => { deepened.set(id, { error: err.message }); })
     .then(() => {
       const host = document.querySelector(`.finding[data-fid="${cssEsc(id)}"] .f-deep`);
-      if (host) host.innerHTML = deepHTML(deepened.get(id));
+      if (host) host.innerHTML = deepHTML(deepened.get(id), id);
     });
 });
 
@@ -2928,9 +3119,9 @@ function showTab(name) {
 }
 window.addEventListener('hashchange', () => showTab(location.hash.slice(1)));
 
-// Agent-source toggle: the live panel and history already hold source-tagged
+// Parent-vendor toggle: the live panel and history already hold normalized
 // data so they just re-render; trends/economy are aggregated server-side and
-// need a refetch with the new source filter.
+// need a refetch with the new vendor filter.
 $('#srcSeg').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
   [...$('#srcSeg').children].forEach(x => x.classList.toggle('on', x === b));
@@ -2947,24 +3138,43 @@ $('#srcSeg').addEventListener('click', (e) => {
 $('#srcCodex').insertAdjacentHTML('afterbegin', OPENAI_MARK);
 $('#srcClaude').insertAdjacentHTML('afterbegin', CLAUDE_MARK);
 
-// Repo filter — a session attribute like the agent source, so it applies to
-// every tab rather than living inside one of them.
-async function loadRepoFacet() {
+function repoLabel(repo, counts) {
+  const parts = String(repo || '').split('/');
+  const name = parts[parts.length - 1] || repo;
+  return counts.get(name) > 1 && parts.length > 1 ? `${name} (${parts[0]})` : name;
+}
+function fillRepoFacet(sel, repos, current) {
+  if (!sel) return;
+  const counts = new Map();
+  for (const repo of repos || []) {
+    const name = String(repo).split('/').pop();
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  sel.innerHTML = '<option value="">all repos</option>' + (repos || []).map(repo =>
+    `<option value="${attr(repo)}"${repo === current ? ' selected' : ''}>${esc(repoLabel(repo, counts))}</option>`).join('');
+  sel.value = current || '';
+}
+
+// Repository scope is local to each view, so switching History to Sonde does
+// not silently change an Economy comparison the user was already reading.
+async function loadRepoFacets() {
   const f = await fetch('/api/facets').then(x => x.json()).catch(() => null);
   if (!f) return;
-  if (f.building) { setTimeout(loadRepoFacet, 2000); return; }
-  fillFacet($('#repoSel'), f.repos, repoFilter, 'all repos');
+  if (f.building) { setTimeout(loadRepoFacets, 2000); return; }
+  fillRepoFacet($('#runRepo'), f.repos, runRepo);
+  fillRepoFacet($('#histRepo'), f.repos, histRepo);
+  fillRepoFacet($('#trRepo'), f.repos, trRepo);
+  fillRepoFacet($('#agRepo'), f.repos, agRepo);
+  fillRepoFacet($('#ecoRepo'), f.repos, ecoRepo);
 }
-$('#repoSel').addEventListener('change', (e) => {
-  repoFilter = e.target.value;
-  if (lastSnap) render(lastSnap);
-  if (histAll.length) renderHistory();
-  if (curTab === 'trends') loadTrends();
-  if (curTab === 'agents') loadAgents();
-  if (curTab === 'economy') loadEconomy();
-  trendData = null; ecoData = null;   // force a refetch when those tabs open
+$('#runRepo').addEventListener('change', (e) => { runRepo = e.target.value; if (lastSnap) render(lastSnap); });
+$('#histRepo').addEventListener('change', (e) => {
+  histRepo = e.target.value; histResetTrail(); renderHistory();
 });
-loadRepoFacet();
+$('#trRepo').addEventListener('change', (e) => { trRepo = e.target.value; trendData = null; loadTrends(); });
+$('#agRepo').addEventListener('change', (e) => { agRepo = e.target.value; agOpen.clear(); loadAgents(); });
+$('#ecoRepo').addEventListener('change', (e) => { ecoRepo = e.target.value; ecoData = null; loadEconomy(); });
+loadRepoFacets();
 
 connect();
 showTab(location.hash.slice(1) || 'running');

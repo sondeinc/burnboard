@@ -11,9 +11,10 @@ burnboard tails the JSONL session transcripts both tools write locally — Codex
 dashboard. No account access, no API keys, nothing sent anywhere. One required dependency
 for local MessagePack caching; an optional tokenizer for offline text counts.
 
-Every view carries an **All agents / Codex / Claude Code** toggle and a **repository picker**:
+Every view carries an **All agents / Codex / Claude Code** toggle and its own **repository picker**:
 see one tool or one codebase in isolation, or everything together in a single combined view with
-each session badged by which agent ran it.
+each session badged by which agent ran it. Repository choices are independent per tab, so changing
+History does not silently change an Economy comparison.
 
 - **Activity** — one live panel per active agent, refreshed every ~2s, with a
   billed-token consumption chart, the current command history, per-command token deltas, and a
@@ -21,7 +22,9 @@ each session badged by which agent ran it.
 - **Subagent lineage** — spawned-by chains up to the root prompt, including Codex's auto-approval
   `guardian` shown nested under the thread it's reviewing.
 - **History** — every past session, sortable, with prompt, model, effort, git branch, billed
-  tokens and command count, filtered by clicking the period chart above it.
+  tokens and command count, filtered by clicking the period chart above it. Sessions that changed
+  models show the exact usage attributed to each model instead of assigning the whole run to the
+  first model seen.
 - **Trends** — token consumption bucketed over time, split into two lists (by base command, by
   prompt); click a bar to drill into it, click a row to plot just that command or prompt.
 - **Agents** — the same spend cut by *who* spent it, so agent types can be compared on
@@ -214,7 +217,7 @@ subagents nested under their parent, dot = 🟢 running / 🟡 idle.
 
 ### History
 
-**Hour / Day / Week / Month** toggle, model and effort filters, subagents optional. A
+**Hour / Day / Week / Month** toggle, vendor/model hierarchy and effort filters, subagents optional. A
 tokens-per-bucket chart sits above the table and is the date filter — click a bar to scope the
 table to it and drill into its hours. Opens on the most recent bucket.
 
@@ -295,6 +298,12 @@ reorder the list, and is given no field to put a figure in — so the ranking st
 quantity it states anyway that is absent from the evidence it was shown is flagged in the output
 as invented. Its answer is boxed, labelled with the runner and model that wrote it, and carries
 what the call cost you.
+
+Each completed result can generate a ready-to-copy fix prompt. Prompt generation is local and
+deterministic, so it makes no second assistant call: it packages the measured finding, bounded
+command evidence, interpretation and candidate changes with implementation and validation
+requirements. If the interpretation contains a flagged unsupported figure, that model-authored
+section is omitted and the prompt falls back to the measured, rule-based remedies.
 
 With no assistant installed — or with `--no-ai` — there is nothing to click and nothing missing:
 findings are the product, not a teaser for one. Detection is re-taken at startup, every few minutes, and
@@ -384,7 +393,9 @@ Three different problems with three different fixes, none of which a total could
 Each agent gets its own ingestion module under `lib/sources/` (`codex.js`, `claude.js`) that
 knows how to find that tool's session files and parse its line schema. Both emit the same
 normalized record shape, so everything downstream — live snapshots, rollups, trends, economy —
-is source-agnostic and simply carries a `source` tag through to the UI.
+is source-agnostic. Each record keeps its raw `source` and gains a canonical parent `vendor`:
+Claude/Anthropic model families roll up to `claude`, while GPT, o-series, Codex and auto-review
+models roll up to `codex`. The source name is the fallback for model-less or future-model records.
 
 - Incremental tail-read: each file is parsed once, then only newly-appended bytes on each tick
   (the active session file is already >10 MB).
@@ -431,10 +442,11 @@ is source-agnostic and simply carries a `source` tag through to the UI.
 | `GET /api/economy?range=all\|30d\|7d&subagents=0\|1&source=codex\|claude` | token-economy signals from the same rollups |
 | `GET /api/advice?range=&subagents=&model=&effort=&source=&repo=` | findings for the same slice as `/api/economy`, plus the detected toolchain |
 | `GET /api/deepen?id=<finding>&runner=claude\|codex&model2=&effort2=` | runs the chosen local assistant over one finding's evidence (opt-in; spends your quota; 403 under `--no-ai`) |
-| `GET /api/facets` | the model / effort / repo values the filters offer |
+| `GET /api/facets` | hierarchical vendor/model groups plus the effort / repo values the filters offer |
 
-Every session record carries `source` (`"codex"` or `"claude"`). The aggregate endpoints accept
-an optional `source=` filter; omit it for the combined view, and an optional `repo=` filter.
+Every session record carries its raw `source` and canonical `vendor` (`"codex"` or `"claude"`).
+The aggregate endpoints accept an optional `source=` parent/vendor filter; omit it for the
+combined view, and an optional `repo=` filter.
 
 `repo=` names a top-level checkout. Sessions run in a git worktree report the worktree directory
 rather than the repo, so `<repo>/.codex/worktrees/<branch>` is folded back into `<repo>`, and a

@@ -49,6 +49,9 @@ const createCodexSource = require('./lib/sources/codex');
 const createClaudeSource = require('./lib/sources/claude');
 const { tallyStats } = require('./lib/cmdtally');
 const { rateFor, costOf } = require('./lib/pricing');
+const { matchesModelFilter, modelGroups, vendorForRecord, vendorFromFilter } = require('./lib/model-facets');
+const { modelSlices, modelsForRecord, sliceRecordByModel } = require('./lib/model-usage');
+const { generateFixPrompt } = require('./lib/fix-prompt');
 const SOURCES = [createCodexSource({ argVal, localTokens: LOCAL_TOKENS }), createClaudeSource({ argVal, localTokens: LOCAL_TOKENS })];
 // How far back per-command timestamps go. A source reporting null keeps them for
 // the whole transcript, so sub-day drilling is exact over all history; one that
@@ -217,6 +220,8 @@ function decorate(sum, full) {
   return {
     id: sum.id,
     source: sum.source,
+    vendor: vendorForRecord({ source: sum.source, primaryModel: sum.primaryModel,
+      autoReview: sum.autoReview, agentKind: sum.agentKind }),
     sourceLabel: src ? src.label : sum.source,
     title: sum.threadTitle || (src && src.titleFor(sum.id)) || null,
     parentId: sum.parentId,
@@ -238,6 +243,7 @@ function decorate(sum, full) {
     status: age <= RUNNING_MS ? 'running' : age <= IDLE_MS ? 'idle' : 'stale',
     primaryModel: sum.primaryModel,
     models: sum.models,
+    modelUsage: sum.modelUsage || {},
     autoReview: sum.autoReview,
     effort: sum.effort,
     personality: sum.personality,
@@ -353,7 +359,7 @@ let building = false;
 let rollupReady = false;
 let buildProgress = { done: 0, total: 0 };
 
-const ROLLUP_VERSION = 22;   // bump to force a full re-scan when the parser changes
+const ROLLUP_VERSION = 23;   // bump to force a full re-scan when the parser changes
 const rollupStore = require('./lib/rollup-cache')({ root: path.join(__dirname, '.cache'),
   version: ROLLUP_VERSION, policy: TEXT_TOKEN_POLICY });
 function loadRollupCache() {
@@ -468,18 +474,20 @@ function seedRange(period, from, to) {
 function rollupFacets() {
   const models = new Set(), efforts = new Set(), repos = new Set();
   for (const r of rollupCache.sessions.values()) {
-    if (r.model) models.add(r.model);
+    for (const model of modelsForRecord(r)) models.add(model);
     if (r.autoReview) models.add('codex-auto-review');
     if (r.effort) efforts.add(r.effort);
     const rk = repoKeyOf(r);
     if (rk) repos.add(rk);
   }
   const order = { minimal: 0, low: 1, medium: 2, high: 3, xhigh: 4 };
+  const groupedModels = modelGroups(rollupCache.sessions.values(), SOURCES);
   return {
     models: [...models].sort(),
+    modelGroups: groupedModels,
     efforts: [...efforts].sort((a, b) => (order[a] ?? 9) - (order[b] ?? 9)),
     repos: [...repos].sort(),
-    sources: SOURCES.map((s) => ({ id: s.id, label: s.label })),
+    sources: groupedModels.map(({ id, label }) => ({ id, label })),
   };
 }
 
@@ -544,15 +552,18 @@ function repoKeyOf(r) {
 }
 const forgetRepoKeys = () => { repoKeyMemo.clear(); repoAlias = null; };
 
-// filter helper shared by trends / economy / commandTrend
+// Filter helper shared by trends / economy / commandTrend. `source` is the
+// public query parameter for compatibility; its value is a canonical vendor.
 function pickSessions(includeSub, model, effort, source, repo) {
-  return [...rollupCache.sessions.values()].filter((r) =>
+  const records = [...rollupCache.sessions.values()].filter((r) =>
     r.startedAt
     && (includeSub || !r.isSubagent)
-    && (!model || r.model === model || (model === 'codex-auto-review' && r.autoReview))
+    && matchesModelFilter(r, model)
     && (!effort || r.effort === effort)
-    && (!source || r.source === source)
+    && (!source || vendorForRecord(r) === source)
     && (!repo || repoKeyOf(r) === repo));
+  if (!model || vendorFromFilter(model) || model === 'codex-auto-review') return records;
+  return records.map((record) => sliceRecordByModel(record, model)).filter(Boolean);
 }
 
 // The "hour" (5-minute) view covers the last hour. A session that started
@@ -735,8 +746,8 @@ function roleOf(r) {
 // auto-review sessions report no model of their own — they are Codex's reviewer
 const modelOf = (r) => r.model || (r.autoReview || r.agentKind === 'guardian' ? 'codex-auto-review' : '?');
 const AGENT_KEYS = {
-  agent: (r) => `${r.source}·${roleOf(r)}·${modelOf(r)}`,
-  role: (r) => `${r.source}·${roleOf(r)}`,
+  agent: (r) => `${vendorForRecord(r)}·${roleOf(r)}·${modelOf(r)}`,
+  role: (r) => `${vendorForRecord(r)}·${roleOf(r)}`,
   model: (r) => modelOf(r),
   effort: (r) => `${modelOf(r)} · effort:${r.effort || '–'}`,
   project: (r) => r.project || '–',
@@ -744,14 +755,16 @@ const AGENT_KEYS = {
 
 function agents(sinceMs, includeSub, source, groupBy, repo) {
   const cutoff = sinceMs ? Date.now() - sinceMs : 0;
-  const recs = pickSessions(includeSub, '', '', source, repo).filter((r) =>
+  const baseRecords = pickSessions(includeSub, '', '', source, repo).filter((r) =>
     !cutoff || new Date(r.startedAt).getTime() >= cutoff);
+  const recs = ['agent', 'model', 'effort'].includes(groupBy)
+    ? baseRecords.flatMap(modelSlices) : baseRecords;
   const keyOf = AGENT_KEYS[groupBy] || AGENT_KEYS.agent;
 
   const groups = new Map();
   const blank = (key, r) => ({
     key,
-    source: r.source, role: roleOf(r), model: modelOf(r), effort: r.effort || null,
+    source: vendorForRecord(r), role: roleOf(r), model: modelOf(r), effort: r.effort || null,
     sessions: 0, tokens: 0, input: 0, cached: 0, output: 0, reasoning: 0,
     commands: 0, outTokens: 0, truncated: 0, dupeRuns: 0, dupeTokens: 0,
     compactions: 0, lastSeen: null,
@@ -1622,6 +1635,7 @@ function deepen(finding, recs, tc, runner, model, effort, cb) {
         pattern: body.pattern, why: body.why, fix: Array.isArray(body.fix) ? body.fix : [],
         confidence: body.confidence || 'unknown',
         flagged,                                     // figures with no basis in the evidence
+        fixPrompt: generateFixPrompt({ finding, evidence, analysis: body, flagged }),
         ranBy: { runner, model: model || 'default' },
         cost: { tokens: (env && env.usage) ? (env.usage.input_tokens || 0) + (env.usage.output_tokens || 0)
           : codexTokens(text) || codexTokens(stderr),   // codex reports usage on stderr
@@ -1687,9 +1701,8 @@ function modelsFor(id) {
   for (const r of (rollupCache ? rollupCache.sessions.values() : [])) {
     // "<synthetic>" and the auto-review label are bookkeeping, not models you
     // can ask for
-    if (r.model && r.source === id && !r.model.startsWith('<') && r.model !== 'codex-auto-review') {
-      seen.add(r.model);
-    }
+    if (r.source !== id) continue;
+    for (const model of modelsForRecord(r)) if (model !== 'codex-auto-review') seen.add(model);
   }
   const def = RUNNERS.find((r) => r.id === id);
   return [...new Set([...(def ? def.aliases : []), ...seen])];
@@ -1829,7 +1842,7 @@ const server = http.createServer((req, res) => {
     return json(res, 200, t);
   }
 
-  // the header's repo picker needs the list before any tab has loaded
+  // Per-tab repo pickers need the shared list before an aggregate tab has loaded.
   if (pathn === '/api/facets') {
     ensureRollups();
     if (!rollupReady) return json(res, 200, { building: true, progress: buildProgress });
@@ -1855,12 +1868,18 @@ const server = http.createServer((req, res) => {
       .map((r) => ({
         id: r.id,
         source: r.source,
+        vendor: vendorForRecord(r),
         startedAt: r.startedAt,
         title: r.title || ((SOURCE_BY_ID.get(r.source) || {}).titleFor ? SOURCE_BY_ID.get(r.source).titleFor(r.id) : null),
         prompt: r.prompt,
         project: r.project,
         repo: r.repo, repoKey: repoKeyOf(r), branch: r.branch,
-        model: r.model, effort: r.effort, autoReview: r.autoReview,
+        model: r.model, models: modelsForRecord(r),
+        modelUsage: Object.fromEntries(Object.entries(r.modelUsage || {}).map(([model, usage]) => [model, {
+          tokens: usage.totals && (usage.totals.billed || usage.totals.total) || 0,
+          toolCalls: usage.toolCalls || 0,
+        }])),
+        effort: r.effort, autoReview: r.autoReview,
         isSubagent: r.isSubagent, agentNickname: r.agentNickname, depth: r.depth,
         agentKind: r.agentKind, parentId: r.parentId,
         parent: r.parentId ? sessionLabel(r.parentId) : null,
