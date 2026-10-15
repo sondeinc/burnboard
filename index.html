@@ -3,13 +3,87 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
 <title>burnboard</title>
+<script>
+  // Apply the saved palette before first paint so reloads do not flash the
+  // default theme. Unknown values are harmless and normalized by the app.
+  try {
+    const savedTheme = localStorage.getItem('burnboard.theme');
+    if (savedTheme === 'tokyo-night') {
+      localStorage.setItem('burnboard.theme', 'burnboard');
+      document.documentElement.dataset.theme = 'burnboard';
+    } else if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+  } catch (_) {}
+</script>
 <style>
   :root {
+    color-scheme: dark;
     --bg: #0d1117; --panel: #161b22; --panel2: #1c2230; --border: #2a3240;
     --fg: #e6edf3; --dim: #8b98a5; --accent: #58a6ff; --green: #3fb950;
     --yellow: #d29922; --red: #f85149; --purple: #bc8cff;
+    --on-accent: #04121f; --on-yellow: #04121f; --deep: #0b0f16;
+    --logo-filter: invert(1); --logo-blend: screen;
     --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  /* Semantic adaptations of the projects' canonical palettes:
+     catppuccin.com/palette, rosepinetheme.com/palette, everforest, Vitesse,
+     and SynthWave '84. Small contrast adjustments keep dense labels readable. */
+  :root[data-theme="catppuccin-mocha"] {
+    color-scheme: dark;
+    --bg: #1e1e2e; --panel: #181825; --panel2: #313244; --border: #45475a;
+    --fg: #cdd6f4; --dim: #a6adc8; --accent: #89b4fa; --green: #a6e3a1;
+    --yellow: #f9e2af; --red: #f38ba8; --purple: #cba6f7;
+    --on-accent: #1e1e2e; --on-yellow: #1e1e2e; --deep: #11111b;
+  }
+  :root[data-theme="rose-pine"] {
+    color-scheme: dark;
+    --bg: #191724; --panel: #1f1d2e; --panel2: #26233a; --border: #524f67;
+    --fg: #e0def4; --dim: #908caa; --accent: #9ccfd8; --green: #31748f;
+    --yellow: #f6c177; --red: #eb6f92; --purple: #c4a7e7;
+    --on-accent: #191724; --on-yellow: #191724; --deep: #16141f;
+  }
+  :root[data-theme="rose-pine-dawn"] {
+    color-scheme: light;
+    --bg: #faf4ed; --panel: #fffaf3; --panel2: #f2e9e1; --border: #cecacd;
+    --fg: #464261; --dim: #716d89; --accent: #286983; --green: #6d8f89;
+    --yellow: #ea9d34; --red: #b4637a; --purple: #907aa9;
+    --on-accent: #fffaf3; --on-yellow: #191724; --deep: #fffaf3;
+    --logo-filter: none; --logo-blend: multiply;
+  }
+  :root[data-theme="everforest-light"] {
+    color-scheme: light;
+    --bg: #fdf6e3; --panel: #f4f0d9; --panel2: #efebd4; --border: #bdc3af;
+    --fg: #5c6a72; --dim: #637279; --accent: #5d7520; --green: #597327;
+    --yellow: #9a6b00; --red: #bd4d49; --purple: #9d477f;
+    --on-accent: #fffbee; --on-yellow: #fffbee; --deep: #fffbee;
+    --logo-filter: none; --logo-blend: multiply;
+  }
+  :root[data-theme="vitesse-light"] {
+    color-scheme: light;
+    --bg: #ffffff; --panel: #f7f7f7; --panel2: #f0f0f0; --border: #d1d5da;
+    --fg: #393a34; --dim: #586069; --accent: #a13865; --green: #1c6b48;
+    --yellow: #a65e2b; --red: #ab5959; --purple: #5a6aa6;
+    --on-accent: #ffffff; --on-yellow: #ffffff; --deep: #f7f7f7;
+    --logo-filter: none; --logo-blend: multiply;
+  }
+  :root[data-theme="synthwave-84"] {
+    color-scheme: dark;
+    --bg: #1f1b2d; --panel: #241b2f; --panel2: #34294f; --border: #495495;
+    --fg: #ffffff; --dim: #a8b1d8; --accent: #36f9f6; --green: #72f1b8;
+    --yellow: #fede5d; --red: #fe4450; --purple: #ff7edb;
+    --on-accent: #1f1b2d; --on-yellow: #1f1b2d; --deep: #171520;
+  }
+  :root[data-theme="synthwave-84"] header h1 a {
+    text-shadow: 0 0 9px color-mix(in srgb, var(--purple) 65%, transparent);
+  }
+  :root[data-theme="synthwave-84"] .seg button.on,
+  :root[data-theme="synthwave-84"] #conn.ok {
+    box-shadow: 0 0 9px color-mix(in srgb, var(--accent) 58%, transparent);
+  }
+  :root[data-theme="synthwave-84"] .chart path[stroke],
+  :root[data-theme="synthwave-84"] .bc-line {
+    filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent) 55%, transparent));
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg);
@@ -33,13 +107,22 @@
   .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
   .seg button { background: var(--panel); color: var(--dim); border: 0; padding: 4px 12px; font: inherit;
     font-size: 12px; cursor: pointer; }
-  .seg button.on { background: var(--accent); color: #04121f; }
+  .seg button.on { background: var(--accent); color: var(--on-accent); }
   #livePause { background: var(--panel); color: var(--dim); border: 1px solid var(--border); border-radius: 6px;
     padding: 4px 12px; font: inherit; font-size: 12px; cursor: pointer; margin-right: 10px; }
-  #livePause.on { background: var(--yellow); color: #04121f; border-color: var(--yellow); }
+  #livePause.on { background: var(--yellow); color: var(--on-yellow); border-color: var(--yellow); }
   .badge.src-codex { color: var(--green); border-color: #1c4a26; }
   .badge.src-claude { color: #e8875a; border-color: #5c3520; }
   #srcSeg { margin-left: auto; }
+  .theme-picker { display: inline-flex; flex-direction: column; align-items: stretch; gap: 2px;
+    color: var(--dim); font-size: 12px; white-space: nowrap; }
+  .theme-picker .theme-label { padding-left: 2px; font: 9px/1 var(--mono);
+    text-transform: uppercase; letter-spacing: .8px; color: var(--dim); }
+  .theme-picker select { width: 138px; padding: 4px 7px; font-size: 12px; }
+  @media (max-width: 1050px) {
+    header { flex-wrap: wrap; }
+    header .stat { margin-left: 0; flex: 1; text-align: right; }
+  }
   #conn { width: 8px; height: 8px; border-radius: 50%; background: var(--red); display: inline-block; }
   #conn.ok { background: var(--green); }
   main { padding: 18px 20px 60px; max-width: 1240px; margin: 0 auto; }
@@ -53,7 +136,8 @@
     display: inline-flex; align-items: center; gap: 5px; }
   .mlogo { width: 12px; height: 12px; display: block; flex: none; pointer-events: none; }
   /* the OpenAI file is black-on-white: invert it, then screen away the black ground */
-  .mlogo.openai { width: 14px; height: 14px; margin: -1px; filter: invert(1); mix-blend-mode: screen; }
+  .mlogo.openai { width: 14px; height: 14px; margin: -1px;
+    filter: var(--logo-filter); mix-blend-mode: var(--logo-blend); }
   .badge.src-codex, .badge.src-claude { display: inline-flex; align-items: center; gap: 5px; }
   #srcSeg button { display: inline-flex; align-items: center; gap: 5px; }
   .facetmark { display: inline-flex; vertical-align: -2px; margin-left: 8px; }
@@ -84,7 +168,7 @@
   /* negative margin cancels the padding, so the hover band costs no layout */
   .fhead { display: flex; align-items: center; gap: 8px; cursor: pointer; flex-wrap: wrap;
     margin: -4px -7px 0; padding: 4px 7px; border-radius: 7px; transition: background .12s; }
-  .fhead:hover { background: rgba(88, 166, 255, .07); }
+  .fhead:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
   .caret { display: inline-block; color: var(--dim); font-size: 11px; transition: transform .12s; width: 10px; }
   .focus.expanded .caret { transform: rotate(90deg); }
   /* a bare chevron reads as decoration — this says, in words, that the panel
@@ -103,6 +187,7 @@
   .fhead-tok + .tl-link { margin-left: 12px; }
   .ftitle { font-size: 15px; font-weight: 600; }
   .fmeta { color: var(--dim); font-size: 12px; margin: 4px 0 2px; padding-left: 18px; }
+  .fmeta .worktree { color: var(--fg); font-family: var(--mono); }
   .promptmini { font-size: 12.5px; color: var(--fg); padding-left: 18px; margin: 2px 0 4px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .82; }
   .lineage { font-size: 11.5px; color: var(--dim); padding-left: 18px; margin: 2px 0; }
@@ -168,7 +253,7 @@
   th { color: var(--dim); font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; }
   tr:hover td { background: var(--panel); }
   tr.trow, tr.ctrow { cursor: pointer; }
-  tr.trow.on > td, tr.ctrow.on > td { background: rgba(88, 166, 255, .14); }
+  tr.trow.on > td, tr.ctrow.on > td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
   tr.trow.on > td:first-child, tr.ctrow.on > td:first-child { box-shadow: inset 3px 0 0 -1px var(--accent); }
   .num { font-family: var(--mono); text-align: right; white-space: nowrap; }
   td.cmd { font-family: var(--mono); font-size: 11px; word-break: break-all; }
@@ -214,9 +299,9 @@
   .ev.user { border-color: var(--accent); } .ev.assistant { border-color: var(--green); }
   .ev.tool { border-color: var(--purple); } .ev.reasoning { border-color: var(--yellow); }
   /* the row a chart click landed on — fades once you have found it */
-  .ev.jump { background: rgba(210, 153, 34, .14); border-color: var(--yellow);
+  .ev.jump { background: color-mix(in srgb, var(--yellow) 14%, transparent); border-color: var(--yellow);
     animation: evjump 2.2s ease-out; }
-  @keyframes evjump { from { background: rgba(210, 153, 34, .34); } }
+  @keyframes evjump { from { background: color-mix(in srgb, var(--yellow) 34%, transparent); } }
   svg.chart[data-chart-clickable] { cursor: crosshair; }
   /* jumping scrolls the chart off the top otherwise, so the second click has
      nothing to aim at — pin it and the timeline moves underneath it. Full-bleed
@@ -299,10 +384,10 @@
   .bc-bar { width: 100%; min-height: 1px; background: var(--accent); opacity: .8;
     border-radius: 1px 1px 0 0; }
   .bc-plot.pick .bc-col { cursor: pointer; }
-  .bc-plot.pick .bc-col:hover { background: rgba(88, 166, 255, .13); }
+  .bc-plot.pick .bc-col:hover { background: color-mix(in srgb, var(--accent) 13%, transparent); }
   .bc-plot.pick .bc-col:hover .bc-bar { opacity: 1; }
   /* the selection tints the whole column, so an empty bucket still reads as picked */
-  .bc-col.sel { background: rgba(210, 153, 34, .22); }
+  .bc-col.sel { background: color-mix(in srgb, var(--yellow) 22%, transparent); }
   .bc-col.sel .bc-bar { background: var(--yellow); opacity: 1; }
   .bc-line { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
   .bc-line polyline, .bc-line path { fill: none; stroke: var(--purple); stroke-width: 1.4; opacity: .62;
@@ -377,7 +462,7 @@
   button.deepen:hover { border-color: var(--accent); color: var(--fg); }
   /* everything in here was written by a model, and is marked as such */
   .ai { border: 1px dashed var(--purple); border-radius: 6px; padding: 9px 12px;
-    background: rgba(188, 140, 255, .06); }
+    background: color-mix(in srgb, var(--purple) 6%, transparent); }
   .ai.pending, .ai.err { border-style: dotted; color: var(--dim); font-size: 12px; }
   .ai-tag { font: 10px var(--mono); text-transform: uppercase; letter-spacing: .5px;
     color: var(--purple); opacity: .85; }
@@ -397,7 +482,7 @@
     color: var(--dim); font-size: 11px; }
   .fixprompt-head button { margin-left: auto; }
   .fixprompt-text { display: block; width: 100%; min-height: 260px; resize: vertical;
-    background: #0b0f16; color: var(--fg); border: 1px solid var(--border); border-radius: 5px;
+    background: var(--deep); color: var(--fg); border: 1px solid var(--border); border-radius: 5px;
     padding: 8px 10px; font: 11px/1.5 var(--mono); }
   .ai-raw { font: 10.5px/1.5 var(--mono); color: var(--dim); white-space: pre-wrap;
     margin-top: 6px; max-height: 120px; overflow: auto; }
@@ -414,10 +499,10 @@
   .esec h3 { font-size: 13px; margin: 0 0 3px; }
 
   #tip { position: fixed; z-index: 40; max-width: 620px; max-height: 60vh; overflow: auto;
-    background: #0b0f16; border: 1px solid var(--border); border-radius: 7px; padding: 9px 11px;
+    background: var(--deep); border: 1px solid var(--border); border-radius: 7px; padding: 9px 11px;
     box-shadow: 0 8px 28px rgba(0,0,0,.55); font: 11px/1.5 var(--mono); pointer-events: none; }
   #tip .th { color: var(--dim); text-transform: uppercase; letter-spacing: .5px; font-size: 9.5px; margin-bottom: 5px; }
-  #tip .tc { display: flex; gap: 8px; padding: 2px 0; border-top: 1px solid #1a212c; }
+  #tip .tc { display: flex; gap: 8px; padding: 2px 0; border-top: 1px solid var(--border); }
   #tip .tc:first-of-type { border-top: 0; }
   #tip .tc .t { color: var(--dim); flex: none; }
   #tip .tc .c { color: var(--green); word-break: break-all; }
@@ -441,6 +526,22 @@
   <span class="seg" id="srcSeg" title="which agent's sessions to show">
     <button data-src="" class="on">All agents</button><button data-src="codex" id="srcCodex">Codex</button><button data-src="claude" id="srcClaude">Claude Code</button>
   </span>
+  <label class="theme-picker" title="Color theme">
+    <span class="theme-label">Theme</span>
+    <select id="themeSelect" aria-label="Color theme">
+      <optgroup label="Burnboard"><option value="burnboard">Burnboard</option></optgroup>
+      <optgroup label="Popular dark themes">
+        <option value="catppuccin-mocha">Catppuccin Mocha</option>
+        <option value="rose-pine">Rosé Pine</option>
+      </optgroup>
+      <optgroup label="Light themes">
+        <option value="rose-pine-dawn">Rosé Pine Dawn</option>
+        <option value="everforest-light">Everforest Light</option>
+        <option value="vitesse-light">Vitesse Light</option>
+      </optgroup>
+      <optgroup label="Neon"><option value="synthwave-84">SynthWave ’84</option></optgroup>
+    </select>
+  </label>
   <span id="conn"></span>
   <span class="stat" id="hdrstat">connecting…</span>
 </header>
@@ -540,6 +641,20 @@
 
 <script>
 const $ = (s, r = document) => r.querySelector(s);
+const THEME_KEY = 'burnboard.theme';
+const THEMES = new Set(['burnboard', 'catppuccin-mocha', 'rose-pine', 'rose-pine-dawn',
+  'everforest-light', 'vitesse-light', 'synthwave-84']);
+function applyTheme(value, remember = true) {
+  const theme = THEMES.has(value) ? value : 'burnboard';
+  document.documentElement.dataset.theme = theme;
+  $('#themeSelect').value = theme;
+  if (remember) {
+    try { localStorage.setItem(THEME_KEY, theme); } catch (_) {}
+  }
+}
+applyTheme(document.documentElement.dataset.theme, false);
+$('#themeSelect').addEventListener('change', (e) => applyTheme(e.target.value));
+
 const fmt = (n) => (n == null || isNaN(n)) ? '–' : Math.round(n).toLocaleString();
 const short = (s, n = 120) => !s ? '' : (s.length > n ? s.slice(0, n) + '…' : s);
 function ago(ms) {
@@ -817,7 +932,7 @@ function renderUsage(snap) {
   const liveTok = (snap.threads || []).reduce((a, t) => a + (t.cumReqTokens || 0), 0);
   if (snap.threads && snap.threads.length)
     parts.push(`<span><b>${kfmtN(liveTok)}</b> across ${snap.threads.length} live</span>`);
-  if (rl && rl.plan_type) parts.push(`<span style="margin-left:auto">plan: ${esc(rl.plan_type)}${rl.credits && rl.credits.balance && rl.credits.balance !== '0' ? ` · $${esc(rl.credits.balance)} credit` : ''}</span>`);
+  if (rl && rl.plan_type) parts.push(`<span style="margin-left:auto">plan: ${esc(rl.plan_type)}${rl.credits && rl.credits.balance && rl.credits.balance !== '0' ? ` · ${fmt(rl.credits.balance)} credits` : ''}</span>`);
 
   el.innerHTML = parts.join('');
   el.hidden = !parts.length;
@@ -842,7 +957,50 @@ function runCmp(a, b) {
   return (b.startedAt || '').localeCompare(a.startedAt || '') || (b.mtime - a.mtime);
 }
 
+// Live snapshots replace the Activity cards wholesale. Preserve every keyed
+// inner scroller across that replacement instead of letting innerHTML reset it
+// to zero. Append-style text stays pinned only when the reader was already at
+// the end; latest-first tables stay at the start for the newest rows, or anchor
+// to the old content once the reader has scrolled away from it.
+function captureScrollState(...roots) {
+  const state = new Map();
+  for (const root of roots) {
+    if (!root) continue;
+    for (const el of root.querySelectorAll('[data-scroll-key]')) {
+      const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+      state.set(el.dataset.scrollKey, {
+        top: el.scrollTop,
+        left: el.scrollLeft,
+        bottom: maxTop - el.scrollTop,
+        atStart: el.scrollTop <= 2,
+        atEnd: maxTop - el.scrollTop <= 2,
+        flow: el.dataset.scrollFlow || 'fixed',
+      });
+    }
+  }
+  return state;
+}
+
+function restoreScrollState(state, ...roots) {
+  for (const root of roots) {
+    if (!root) continue;
+    for (const el of root.querySelectorAll('[data-scroll-key]')) {
+      const saved = state.get(el.dataset.scrollKey);
+      if (!saved) continue;
+      const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+      const flow = el.dataset.scrollFlow || saved.flow;
+      let top = saved.top;
+      if (flow === 'append' && saved.atEnd) top = maxTop;
+      if (flow === 'prepend') top = saved.atStart ? 0 : maxTop - saved.bottom;
+      el.scrollTop = Math.max(0, Math.min(maxTop, top));
+      const maxLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+      el.scrollLeft = Math.max(0, Math.min(maxLeft, saved.left));
+    }
+  }
+}
+
 function renderLiveTree(threads) {
+  const scrollState = captureScrollState($('#running'), $('#live'));
   // the same thread id can show up more than once (resumed sessions write a
   // new rollout file but keep the original id) — keep the freshest copy
   const nodes = new Map();
@@ -929,6 +1087,7 @@ function renderLiveTree(threads) {
     : '<div class="empty">No session is currently running.</div>';
   const otherHtml = other.map(r => node(r, 0)).join('');
   $('#live').innerHTML = otherHtml || '<div class="empty">Nothing else active in the last 15 minutes.</div>';
+  restoreScrollState(scrollState, $('#running'), $('#live'));
 }
 
 function syntheticRow(t) {
@@ -1087,6 +1246,14 @@ function rateNote(t, totC) {
     (${fmt(t.tokenClasses.cr)} tok at the read rate) plus tokens no command caused.</p>`;
 }
 
+function worktreeLabel(cwd) {
+  const clean = String(cwd || '').replace(/\/+$/, '');
+  if (!clean) return '';
+  const parts = clean.split('/').filter(Boolean);
+  const marker = parts.findLastIndex(part => part.replace(/^\./, '') === 'worktrees');
+  return (marker >= 0 ? parts.slice(marker + 1).join('/') : parts[parts.length - 1]) || '';
+}
+
 function focusBlock(t, depth) {
   const nested = depth > 0;
   const name = t.title || (t.agentNickname ? 'agent ' + t.agentNickname
@@ -1111,12 +1278,15 @@ function focusBlock(t, depth) {
   const tk = t.tokens || {};
   const ctxPct = t.contextUsed != null ? t.contextUsed : null;
   const proj = t.git ? `${esc(t.git.repo || t.project)} @ ${esc(t.git.branch)}` : esc(t.project || '');
+  const worktree = worktreeLabel(t.cwd);
+  const worktreeMeta = worktree
+    ? ` · <span class="worktree" title="${attr(t.cwd)}">worktree: ${esc(short(worktree, 56))}</span>` : '';
   const open = expanded.has(t.id);
 
   const prompt = t.firstUserText
-    ? `<div class="prompt"><span class="lbl">session prompt</span><p>${esc(t.firstUserText)}</p></div>` : '';
+    ? `<div class="prompt"><span class="lbl">session prompt</span><p data-scroll-key="${attr(t.id + ':prompt:first')}" data-scroll-flow="append">${esc(t.firstUserText)}</p></div>` : '';
   const latest = (t.lastUserText && t.lastUserText !== t.firstUserText)
-    ? `<div class="prompt"><span class="lbl">latest message</span><p>${esc(t.lastUserText)}</p></div>` : '';
+    ? `<div class="prompt"><span class="lbl">latest message</span><p data-scroll-key="${attr(t.id + ':prompt:latest')}" data-scroll-flow="append">${esc(t.lastUserText)}</p></div>` : '';
 
   const cmds = (t.commands || []).slice().reverse();      // latest first
   const turns = (t.turns || []).slice().reverse();       // review agents: no commands, only turns
@@ -1136,7 +1306,7 @@ function focusBlock(t, depth) {
         <span class="fhead-tok">${kfmtN(t.cumReqTokens || tk.total_tokens)} tok${ctxPct != null ? ` · ${ctxPct}% ctx` : ''} · ${t.toolCallCount} cmds · ${t.turnsCompleted}/${t.turnsStarted} turns${t.compactions ? ` · ${t.compactions}⤺` : ''}</span>
         <a href="#" onclick="openDetail('${t.id}');event.stopPropagation();return false" class="tl-link">full timeline →</a>
       </div>
-      <div class="fmeta">${proj}${mtag ? ' · ' + mtag : ''}${t.effort ? ' · effort:' + esc(t.effort) : ''}${t.serviceTier ? ' · ' + esc(t.serviceTier) : ''}</div>
+      <div class="fmeta">${proj}${worktreeMeta}${mtag ? ' · ' + mtag : ''}${t.effort ? ' · effort:' + esc(t.effort) : ''}${t.serviceTier ? ' · ' + esc(t.serviceTier) : ''}</div>
       ${nested ? '' : lineageLine(t)}
       <div class="promptmini" data-tip-id="${t.id}">${esc(promptLine)}</div>
       <div class="chartwrap">${activityChart(t.tokenSeries, open ? 230 : (nested ? 92 : 140), true, t.id)}</div>
@@ -1157,7 +1327,7 @@ function focusBlock(t, depth) {
         <div class="cols">
           <div>
             <p class="subh">Commands — latest first</p>
-            <div class="cmdscroll"><table><thead><tr>
+            <div class="cmdscroll" data-scroll-key="${attr(t.id + ':commands')}" data-scroll-flow="prepend"><table><thead><tr>
               <th>Time</th><th>Command</th>
               <th class="num" title="billed tokens consumed by this command">Tokens</th>
               <th class="num" title="running sum of the Tokens column through this command, reset at the start of each prompt">Command total</th></tr></thead>
@@ -1172,7 +1342,7 @@ function focusBlock(t, depth) {
           </div>
           <div>
             ${turns.length ? `<p class="subh">Turns — latest first</p>
-            <div class="cmdscroll"><table><thead><tr>
+            <div class="cmdscroll" data-scroll-key="${attr(t.id + ':turns')}" data-scroll-flow="prepend"><table><thead><tr>
               <th>Time</th><th>What the agent said</th>
               <th class="num" title="billed tokens consumed by this turn">Tokens</th></tr></thead>
               <tbody>${turns.map(t2 => `<tr>
