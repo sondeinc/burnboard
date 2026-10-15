@@ -305,7 +305,7 @@
   .bc-col.sel { background: rgba(210, 153, 34, .22); }
   .bc-col.sel .bc-bar { background: var(--yellow); opacity: 1; }
   .bc-line { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-  .bc-line polyline { fill: none; stroke: var(--purple); stroke-width: 1.4; opacity: .5;
+  .bc-line polyline, .bc-line path { fill: none; stroke: var(--purple); stroke-width: 1.4; opacity: .62;
     vector-effect: non-scaling-stroke; }
   .bc-xax { display: flex; justify-content: flex-start; gap: 1px; margin-top: 3px;
     font: 9.5px/1 var(--mono); color: var(--dim); }
@@ -451,6 +451,13 @@
       <span style="float:right;font-weight:400;text-transform:none;letter-spacing:0">
         <select id="runRepo" class="facet repo-facet" title="repository"></select>
         <button id="livePause" type="button" title="Pause live updates so you can scroll — nothing is lost, updates just queue">⏸ Pause</button>
+        chart
+        <span class="seg" id="runChartMode" title="show requests or token consumption on a fixed clock">
+          <button data-mode="requests">Requests</button><button data-mode="pace" class="on">Pace</button>
+        </span>
+        <select id="runChartHours" title="pace window">
+          <option value="2">2h</option><option value="4">4h</option><option value="8" selected>8h</option><option value="12">12h</option><option value="24">24h</option>
+        </select>
         sort
         <span class="seg" id="runSort">
           <button data-s="started" class="on">Started</button><button data-s="tokens">Tokens</button>
@@ -708,15 +715,15 @@ $('#livePause').addEventListener('click', () => {
 
 function render(snap) {
   lastSnap = snap;
+  activityChartNow = new Date(snap.now).getTime() || Date.now();
   $('#conn').classList.add('ok');
   const threads = (snap.threads || []).filter(t => (!srcFilter || vendorForSession(t) === srcFilter)
     && (!runRepo || t.repoKey === runRepo));
   const running = threads.filter(t => t.status === 'running');
   const heads = agentLimits(snap).map(l => {
     const w = tightestWindow(l.windows);
-    return `<span class="hdrlim" title="${attr(l.label)}: ${w.used_percent}% of the ${winLabel(w.window_minutes)} limit used${
-      untilReset(w.resets_at) ? `, resets in ${untilReset(w.resets_at)}` : ''}${l.staleFor ? ` (as of ${l.staleFor})` : ''}">${
-      l.mark}<b>${pctLeft(w.used_percent)}%</b> left ${winShort(w.window_minutes)}</span>`;
+    return `<span class="hdrlim" title="${attr(limitWindowTitle(l, w))}">${
+      l.mark}${limitWindowText(w, true)}${l.stale ? ' · stale' : ''}</span>`;
   }).join('<span class="sep"> · </span>');
   $('#hdrstat').innerHTML =
     `${threads.length} live · ${running.length} running · updated ${esc(new Date(snap.now).toLocaleTimeString())}`
@@ -726,9 +733,9 @@ function render(snap) {
   renderLiveTree(threads);
 }
 
-// Codex reports its windows in the rollout stream; Claude Code caches its own
-// in ~/.claude.json. Both are normalised to {used_percent, window_minutes,
-// resets_at} so the header and the usage bar can treat them alike.
+// Codex reports its windows in the rollout stream. Claude Code supplies either
+// a cached ~/.claude.json snapshot or a newer transcript limit event. Both are
+// normalised so the header and usage bar can render them consistently.
 function agentLimits(snap) {
   const out = [];
   const rl = snap.rateLimits;
@@ -736,16 +743,38 @@ function agentLimits(snap) {
   if (codex.length) out.push({ id: 'codex', label: 'Codex', mark: OPENAI_MARK, windows: codex, staleFor: '' });
   const cl = snap.claudeLimits;
   if (cl && cl.windows && cl.windows.length) {
+    const ageMs = cl.fetchedAtMs ? Date.now() - cl.fetchedAtMs : 0;
     out.push({
       id: 'claude', label: 'Claude Code', mark: CLAUDE_MARK, windows: cl.windows,
-      staleFor: cl.fetchedAtMs ? new Date(cl.fetchedAtMs).toLocaleTimeString() : '',
+      observedAt: cl.fetchedAtMs ? new Date(cl.fetchedAtMs).toLocaleString() : '',
+      source: cl.source || 'cache', stale: cl.source === 'cache' && ageMs > 10 * 60 * 1000,
     });
   }
   return out;
 }
 // the binding window is the one with the least headroom left
-const tightestWindow = (ws) => ws.reduce((a, b) => (b.used_percent > a.used_percent ? b : a));
+const windowUrgency = (w) => w.status === 'rejected' ? 1000
+  : w.status === 'allowed_warning' ? 999
+  : typeof w.used_percent === 'number' ? w.used_percent : -1;
+const tightestWindow = (ws) => ws.reduce((a, b) => (windowUrgency(b) > windowUrgency(a) ? b : a));
 const pctLeft = (used) => (100 - used).toFixed(used > 99 ? 1 : 0);
+
+function limitWindowText(w, compact = false) {
+  const period = compact ? winShort(w.window_minutes) : winLabel(w.window_minutes);
+  if (w.status === 'rejected') return `<b>limit reached</b> ${period}`;
+  if (w.status === 'allowed_warning') return `<b>near limit</b> ${period}`;
+  if (typeof w.used_percent === 'number')
+    return `<b>${pctLeft(w.used_percent)}%</b> left${compact ? ' ' : ' of '}${period}`;
+  return `<b>${esc(w.status || 'status unknown')}</b> ${period}`;
+}
+
+function limitWindowTitle(l, w) {
+  const state = w.status === 'rejected' ? 'limit reached'
+    : typeof w.used_percent === 'number' ? `${w.used_percent}% used` : (w.status || 'status unknown');
+  const reset = untilReset(w.resets_at);
+  const observed = l.observedAt ? `; observed ${l.observedAt} from ${l.source}` : '';
+  return `${l.label}: ${state} for the ${winLabel(w.window_minutes)} window${reset ? `; resets in ${reset}` : ''}${observed}`;
+}
 
 function winShort(mins) {
   if (mins >= 10080) return 'wk';
@@ -775,10 +804,11 @@ function renderUsage(snap) {
   const parts = [];
   for (const l of agentLimits(snap)) {
     const windows = l.windows.map(w =>
-      `<b>${pctLeft(w.used_percent)}%</b> left of ${winLabel(w.window_minutes)}${
+      `${limitWindowText(w)}${
         untilReset(w.resets_at) ? ` (resets in ${untilReset(w.resets_at)})` : ''}`).join(' · ');
     parts.push(`<span class="agentlim" title="${attr(l.label)} limits${
-      l.staleFor ? ` — as of ${l.staleFor}, refreshed when Claude Code runs` : ''}">${l.mark}${windows}</span>`);
+      l.observedAt ? ` — observed ${l.observedAt} from ${l.source}` : ''}">${l.mark}${windows}${
+      l.stale ? ` · stale as of ${esc(l.observedAt)}` : ''}</span>`);
   }
   if (u.haveRollups) {
     parts.push(`<span><b>${kfmtN(u.today)}</b> tokens today</span>`);
@@ -802,6 +832,9 @@ const srcBadge = (id) => id ? `<span class="badge src-${esc(id)}">${SRC_MARK[id]
 let srcFilter = '';        // '' = all agents | 'codex' | 'claude'
 let runRepo = '';          // Activity has its own repository scope
 let runSort = 'started';   // 'started' | 'tokens', both descending
+let runChartMode = 'pace'; // 'requests' | 'pace'
+let runChartHours = 8;
+let activityChartNow = Date.now();
 let lastRunOrder = [];     // root ids in the order last rendered
 
 function runCmp(a, b) {
@@ -1106,7 +1139,7 @@ function focusBlock(t, depth) {
       <div class="fmeta">${proj}${mtag ? ' · ' + mtag : ''}${t.effort ? ' · effort:' + esc(t.effort) : ''}${t.serviceTier ? ' · ' + esc(t.serviceTier) : ''}</div>
       ${nested ? '' : lineageLine(t)}
       <div class="promptmini" data-tip-id="${t.id}">${esc(promptLine)}</div>
-      <div class="chartwrap">${consumptionChart(t.tokenSeries, open ? 230 : (nested ? 92 : 140), true, t.id)}</div>
+      <div class="chartwrap">${activityChart(t.tokenSeries, open ? 230 : (nested ? 92 : 140), true, t.id)}</div>
 
       <div class="fdetail">
         <div class="fpath">${esc(t.cwd || '')}</div>
@@ -1187,6 +1220,100 @@ const TOK_PARTS = [
   { k: 'o', label: 'output', color: 'var(--green)', op: 0.9 },
 ];
 const partsTotal = (p) => TOK_PARTS.reduce((a, q) => a + (p[q.k] || 0), 0);
+
+// A centered triangular moving average. Missing clock buckets are deliberately
+// zero before they reach this function, so an idle stretch tapers to zero
+// instead of drawing an invented bridge between bursts.
+function smoothValues(values, radius = 2) {
+  return values.map((_, i) => {
+    let weighted = 0, weights = 0;
+    for (let j = Math.max(0, i - radius); j <= Math.min(values.length - 1, i + radius); j++) {
+      const weight = radius + 1 - Math.abs(i - j);
+      weighted += (+values[j] || 0) * weight;
+      weights += weight;
+    }
+    return weights ? weighted / weights : 0;
+  });
+}
+
+// Catmull-Rom converted to cubic Beziers. Clamping the control points keeps a
+// smooth non-negative usage series from overshooting above/below its plot.
+function smoothSvgPath(points, minY = 0, maxY = 100) {
+  if (!points.length) return '';
+  if (points.length === 1) return `M ${points[0][0].toFixed(2)} ${points[0][1].toFixed(2)}`;
+  const clampY = (v) => Math.max(minY, Math.min(maxY, v));
+  let d = `M ${points[0][0].toFixed(2)} ${points[0][1].toFixed(2)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] || points[i];
+    const p1 = points[i], p2 = points[i + 1], p3 = points[i + 2] || p2;
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const c1y = clampY(p1[1] + (p2[1] - p0[1]) / 6);
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const c2y = clampY(p2[1] - (p3[1] - p1[1]) / 6);
+    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2[0].toFixed(2)} ${p2[1].toFixed(2)}`;
+  }
+  return d;
+}
+
+function activityChart(series, H, clickable, threadId) {
+  return runChartMode === 'pace'
+    ? paceChart(series, H, clickable, threadId, runChartHours)
+    : consumptionChart(series, H, clickable, threadId);
+}
+
+// Fixed-clock consumption lens. Every card uses the same [now - N hours, now]
+// domain, making pace comparable between sessions. The faint columns retain
+// exact bucket amounts; only the line/area is smoothed.
+function paceChart(series, H, clickable, threadId, hours) {
+  H = H || 230;
+  hours = +hours || 8;
+  const W = 800, PL = 58, PR = 12, PT = 12, PB = 22;
+  const iw = W - PL - PR, ih = H - PT - PB;
+  const bucketMinutes = hours <= 2 ? 2 : hours <= 8 ? 5 : hours <= 12 ? 10 : 15;
+  const bucketMs = bucketMinutes * 60000;
+  const end = activityChartNow, start = end - hours * 3600000;
+  const count = Math.ceil((end - start) / bucketMs);
+  const raw = Array(count).fill(0);
+  for (const p of series || []) {
+    const at = Date.parse(p.t);
+    if (!Number.isFinite(at) || at < start || at > end) continue;
+    const i = Math.min(count - 1, Math.floor((at - start) / bucketMs));
+    raw[i] += partsTotal(p) || p.last || 0;
+  }
+  const perHour = raw.map(v => v * 3600000 / bucketMs);
+  const trend = smoothValues(perHour, 2);
+  const top = Math.max(...perHour, ...trend, 1);
+  const x = (i) => PL + ((i + 0.5) / count) * iw;
+  const y = (v) => PT + ih - (v / top) * ih;
+  const points = trend.map((v, i) => [x(i), y(v)]);
+  const line = smoothSvgPath(points, PT, PT + ih);
+  const area = `${line} L ${x(count - 1).toFixed(2)} ${(PT + ih).toFixed(2)} L ${x(0).toFixed(2)} ${(PT + ih).toFixed(2)} Z`;
+  const bw = Math.max(1, iw / count * 0.72);
+  const bars = perHour.map((v, i) => v ? `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${y(v).toFixed(1)}"
+    width="${bw.toFixed(1)}" height="${(PT + ih - y(v)).toFixed(1)}" fill="var(--purple)" opacity="0.16"><title>${fmt(raw[i])} tokens in ${bucketMinutes}m</title></rect>` : '').join('');
+  let grid = '';
+  for (let g = 0; g <= 4; g++) {
+    const v = top * g / 4, yy = y(v);
+    grid += `<line x1="${PL}" y1="${yy.toFixed(1)}" x2="${W - PR}" y2="${yy.toFixed(1)}" stroke="var(--border)" stroke-width="1"/>`;
+    grid += `<text x="${PL - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${kfmt(v)}</text>`;
+  }
+  const timeLabel = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const ticks = [0, .25, .5, .75, 1].map((f, i) => {
+    const xx = PL + f * iw;
+    return `<text x="${xx.toFixed(1)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}">${timeLabel(start + f * (end - start))}</text>`;
+  }).join('');
+  const chartAttrs = clickable ? ` data-chart-clickable="1" data-t0="${start}" data-t1="${end}"`
+    + (threadId ? ` data-thread="${attr(threadId)}"` : '') : '';
+  const total = raw.reduce((a, v) => a + v, 0);
+  return `<svg class="chart"${chartAttrs} viewBox="0 0 ${W} ${H}" style="height:${H}px" preserveAspectRatio="none">
+    ${grid}${bars}
+    <path d="${area}" fill="var(--accent)" opacity="0.12"/>
+    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.7" stroke-linejoin="round"/>
+    ${ticks}
+    <text x="${PL + iw / 2}" y="${PT + 11}" text-anchor="middle">${fmt(total)} tokens in ${hours}h · smoothed tokens/hour · ${bucketMinutes}m actual buckets${
+      clickable ? ' · click to jump the timeline' : ''}</text>
+  </svg>`;
+}
 
 function consumptionChart(series, H, clickable, threadId) {
   H = H || 230;
@@ -1461,8 +1588,12 @@ function renderHistory() {
     if (!lv.keys.length) return '';
     const head = (i === 0 ? '' : `${bucketTitle(histTrail[i - 1].period, histTrail[i - 1].sel)} — `)
       + `billed tokens per ${perLbl(L.period)}`;
-    return tbarChart(lv.keys, k => (lv.totals[k] && lv.totals[k].tokens) || 0, head,
-      { pick: `hist:${i}`, sel: L.sel, period: L.period, drilled: i < histTrail.length - 1 });
+    const values = lv.keys.map(k => (lv.totals[k] && lv.totals[k].tokens) || 0);
+    const radius = values.length < 5 ? 1 : values.length < 16 ? 2 : 3;
+    return tbarChart(lv.keys, (_, j) => values[j], head,
+      { pick: `hist:${i}`, sel: L.sel, period: L.period, drilled: i < histTrail.length - 1,
+        line: smoothValues(values, radius), lineLabel: 'smoothed trend',
+        lineSharedScale: true, lineSmooth: true });
   }).join('');
 
   // the picked bucket is the table's filter
@@ -1552,6 +1683,17 @@ $('#runSort').addEventListener('click', (e) => {
   [...$('#runSort').children].forEach(x => x.classList.toggle('on', x === b));
   runSort = b.dataset.s;
   lastRunOrder = [];   // explicit sort request — re-sort now even if a panel is open
+  if (lastSnap) render(lastSnap);
+});
+$('#runChartMode').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  [...$('#runChartMode').children].forEach(x => x.classList.toggle('on', x === b));
+  runChartMode = b.dataset.mode;
+  $('#runChartHours').hidden = runChartMode !== 'pace';
+  if (lastSnap) render(lastSnap);
+});
+$('#runChartHours').addEventListener('change', (e) => {
+  runChartHours = +e.target.value || 8;
   if (lastSnap) render(lastSnap);
 });
 
@@ -1902,7 +2044,8 @@ const tickLbl = (b) => b.includes(':') ? b.slice(11)        // 2026-08-31T16:05 
   : b.length > 7 ? b.slice(5) : b;                          // 2026-08-31       -> 08-31
 
 // HTML/CSS bar chart — responsive, no SVG text stretching.
-// opts.line = secondary series (drawn as a faint polyline), opts.lineLabel = its name
+// opts.line = secondary series, opts.lineSmooth = curved path
+// opts.lineSharedScale keeps a same-unit overlay honest against the bars
 // opts.pick = click-target id (bars become clickable), opts.sel = selected bucket
 function tbarChart(buckets, valueFn, label, opts = {}) {
   if (!buckets.length) return '<div class="bchart"><div class="bc-title">no data</div></div>';
@@ -1918,13 +2061,16 @@ function tbarChart(buckets, valueFn, label, opts = {}) {
   const slot = BAR + GAP;
   const wantW = n * slot - GAP;
   const scrolls = wantW > 1100;                                // (title hint only)
+  const cx = (i) => i * slot + BAR / 2;                       // centre of bar i
   let lineSvg = '';
   const line = opts.line;
   if (line && line.length === n && line.some(v => v)) {
-    const lmax = Math.max(...line, 1);
-    const d = Math.max(1, n - 1);
-    const pts = line.map((v, i) => `${(i / d * 100).toFixed(2)},${(96 - v / lmax * 92).toFixed(2)}`).join(' ');
-    lineSvg = `<svg class="bc-line" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points="${pts}"/></svg>`;
+    const lmax = opts.lineSharedScale ? max : Math.max(...line, 1);
+    const points = line.map((v, i) => [cx(i), 96 - v / lmax * 92]);
+    const mark = opts.lineSmooth
+      ? `<path d="${smoothSvgPath(points, 4, 96)}"/>`
+      : `<polyline points="${points.map(p => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(' ')}"/>`;
+    lineSvg = `<svg class="bc-line" viewBox="0 0 ${wantW} 100" preserveAspectRatio="none">${mark}</svg>`;
   }
   const lbl = tickLbl;
   // skip enough ticks that the widest legend still clears its neighbours
@@ -1935,7 +2081,6 @@ function tbarChart(buckets, valueFn, label, opts = {}) {
   // Ticks sit on an even grid `step` bars apart, anchored on the picked bar. That
   // gives the pick a label without dropping the neighbour it would have crowded —
   // the whole row just shifts, so the spacing stays uniform either way.
-  const cx = (i) => i * slot + BAR / 2;                       // centre of bar i
   const ticks = [];
   for (let i = (selIdx >= 0 ? selIdx : 0) % step; i < n; i += step) ticks.push(i);
   // the leftmost label is flush left so it starts at the plot edge; a trailing one

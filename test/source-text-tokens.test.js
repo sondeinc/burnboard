@@ -74,3 +74,44 @@ test('Claude model switches retain exact per-model usage and command custody', a
   assert.equal(result.recentCmds[0].m, 'claude-opus-5-5');
   assert.equal(result.recentCmds[1].m, 'claude-sonnet-5-5');
 });
+
+test('Claude fresh transcript limit overrides a stagnant usage cache', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'burnboard-claude-quota-test-'));
+  try {
+    const root = path.join(dir, 'claude');
+    fs.mkdirSync(path.join(root, 'projects'), { recursive: true });
+    const now = Date.now();
+    fs.writeFileSync(root + '.json', JSON.stringify({
+      cachedUsageUtilization: {
+        fetchedAtMs: now - 60 * 60 * 1000,
+        utilization: {
+          five_hour: { utilization: 0, resets_at: null },
+          seven_day: { utilization: 0, resets_at: null },
+        },
+      },
+    }));
+    const source = claude({
+      argVal: (name, fallback) => name === '--claude-root' ? root : fallback,
+      localTokens: false,
+    });
+    const summary = source.emptySummary(path.join(root, 'projects', 'session.jsonl'));
+    const resetsAt = Math.floor((now + 30 * 60 * 1000) / 1000);
+    source.applyLine(summary, JSON.stringify({
+      type: 'assistant',
+      timestamp: new Date(now - 1000).toISOString(),
+      quotaLimits: { status: 'rejected', rateLimitType: 'five_hour', resetsAt },
+      message: { content: [] },
+    }));
+
+    assert.deepEqual(source.quota(), {
+      windows: [{
+        used_percent: 100,
+        window_minutes: 300,
+        resets_at: resetsAt,
+        status: 'rejected',
+      }],
+      fetchedAtMs: now - 1000,
+      source: 'transcript',
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
