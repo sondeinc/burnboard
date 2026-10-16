@@ -1,10 +1,10 @@
-# Investigation and the Agentic Monitor
+# Investigation and Live Monitor
 
-Investigation is Burnboard's local flight recorder. It preserves references to the original Codex and Claude Code records while building a disposable, versioned index under `.cache/investigation/v2/`. Source transcripts are opened read-only. Pins, notes, saved searches, monitor preference, and saved investigations live in browser storage instead of the transcripts.
+Investigation is Burnboard's local flight recorder. It preserves references to the original Codex and Claude Code records while building a disposable, versioned index under `.cache/investigation/v2/`. Source transcripts are opened read-only. Pins, notes, saved searches, Live Monitor preference, human outcome assessments, and saved investigations live in browser storage instead of the transcripts.
 
-## Agentic monitor
+## Live Monitor
 
-The agentic monitor is optional and off by default. Turn it on from the Investigate header when you want appended records indexed in real time. Burnboard opens one localhost event stream, checks recently active source files, and commits complete records to the index. Turn it off to close the stream and stop continuous scanning. Search, manual refresh, and existing indexed evidence remain available.
+Live Monitor is optional and off by default. Turn it on from the Investigate header when you want appended records indexed in real time. Burnboard opens one localhost event stream, checks recently active source files, and commits complete records to the index. Turn it off to close the stream and stop continuous scanning. Search, manual refresh, and existing indexed evidence remain available.
 
 Live updates preserve the selected event, event-list scroll offset, inspector scroll offset, keyboard focus, and URL state. The update notice accumulates while reading. `Follow newest events` is a separate explicit choice.
 
@@ -44,3 +44,14 @@ Recorded on 2026-10-16 using Node 24.18.0 under WSL2 on a 13th Gen Intel Core i7
 - `POST /api/investigate/cancel` — pause indexing
 
 All read routes are bounded and return JSON except the event stream. The stream performs no model calls, launches no agents, and runs only while at least one explicitly enabled browser client is connected.
+
+## Release Two deterministic signals
+
+Activity includes an attention brief since the previous visit or a chosen interval. Deterministic rules surface equivalent repeated failures, equivalent repeated command/results, identifiable pending calls, completion-like claims with missing or historical validation, and explicit child sessions without a recorded parent acknowledgement. Findings state their uncertainty and link to source evidence. Acknowledge, dismiss, snooze, and rule settings remain in browser storage.
+
+The Worktrees view groups recorded sessions by repository and working directory. A worktree-shaped path is labeled as a path observation, not proof of Git registration. Concurrent recorded edits to the same path are labeled overlap, never conflict. The Investigate outcome trail keeps requests, observed changes, completion-like claims, validation, commits, integration, delivery, and human assessment as independent states.
+
+- `GET /api/flight/overview` — attention brief, findings, worktree lanes, and recorded edit overlaps
+- `GET /api/flight/session?session=…` — bounded local outcome and verification trail
+
+Release Two uses only the committed local index. Analysis is bounded to the newest 300 sessions and 5,000 events per session while retaining the first request; API coverage reports every limit and omission. It does not call a model, inspect the current worktree as historical proof, stop or rerun an agent, or send external notifications.

@@ -1,0 +1,40 @@
+.fr-attention,.fr-board-heading,.fr-overlaps,.fr-repo { border:1px solid var(--border); background:var(--panel); border-radius:9px; }
+.fr-attention { margin:8px 0 22px; padding:16px; }
+.fr-heading,.fr-board-heading { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; }
+.fr-heading h2,.fr-board-heading h2 { margin:3px 0; border:0; padding:0; color:var(--fg); font-size:22px; text-transform:none; letter-spacing:0; }
+.fr-heading p,.fr-board-heading p { color:var(--dim); margin:4px 0; }
+.fr-heading .fr-coverage { font:10px var(--mono); color:var(--yellow); }
+.fr-eyebrow { color:var(--accent); font:10px var(--mono); letter-spacing:1px; text-transform:uppercase; }
+.fr-controls { display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap; justify-content:flex-end; }
+.fr-controls label { color:var(--dim); font-size:11px; }
+.fr-controls select { display:block; margin-top:3px; }
+.fr-controls details { position:relative; }
+.fr-controls details > div,.fr-controls details[open] { padding:7px; background:var(--panel2); border-radius:6px; }
+.fr-controls details label { display:block; padding:3px; }
+.fr-brief { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:14px 0; }
+.fr-brief > div { padding:10px; background:var(--panel2); border-radius:6px; display:flex; flex-direction:column; min-width:0; }
+.fr-brief span { color:var(--dim); font:10px var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fr-brief b { color:var(--accent); font-size:11px; margin-top:5px; }
+.fr-findings { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.fr-finding { border:1px solid var(--border); border-left:3px solid var(--dim); border-radius:7px; padding:12px; min-width:0; background:var(--bg); }
+.fr-finding.severity-high { border-left-color:var(--red); }.fr-finding.severity-medium { border-left-color:var(--yellow); }.fr-finding.severity-low { border-left-color:var(--accent); }
+.fr-finding.is-acknowledged { opacity:.62; }.fr-finding h3 { margin:7px 0 4px; font-size:14px; }.fr-finding p { color:var(--dim); font-size:11.5px; }
+.fr-finding-top { display:flex; gap:8px; align-items:center; color:var(--dim); font:10px var(--mono); text-transform:uppercase; }
+.fr-finding-top time { margin-left:auto; text-transform:none; }.fr-severity { color:var(--yellow); }.fr-rule { color:var(--purple); }
+.fr-finding details code { display:block; white-space:pre-wrap; overflow-wrap:anywhere; padding:7px; background:var(--deep); font-size:10px; }
+.fr-finding ol { padding-left:22px; }.fr-finding li { color:var(--dim); font-size:10.5px; margin:5px 0; overflow-wrap:anywhere; }
+.fr-actions { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:9px; }.fr-actions button,.fr-board-heading button { background:var(--panel2); border:1px solid var(--border); color:var(--fg); border-radius:5px; padding:5px 8px; cursor:pointer; font:11px inherit; }
+.fr-actions .fr-primary { margin-right:auto; padding:5px 8px; background:var(--accent); color:var(--on-accent); border-radius:5px; font-size:11px; font-weight:600; }
+.fr-clear,.fr-error { color:var(--dim); padding:18px; background:var(--panel2); border-radius:6px; grid-column:1/-1; }.fr-error { color:var(--yellow); }
+.fr-more { display:block; margin:12px auto 0; background:var(--panel2); color:var(--fg); border:1px solid var(--border); border-radius:6px; padding:7px 12px; cursor:pointer; }
+#worktrees { display:flex; flex-direction:column; gap:12px; }.fr-board-heading { padding:16px; }.fr-overlaps { padding:12px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.fr-overlaps > p { color:var(--dim); }.fr-overlaps article { border-left:3px solid var(--yellow); padding:9px; background:var(--panel2); border-radius:5px; min-width:0; }
+.fr-overlaps article > span { color:var(--yellow); font:10px var(--mono); text-transform:uppercase; }.fr-overlaps code { display:block; overflow-wrap:anywhere; margin-top:5px; }.fr-overlaps p { color:var(--dim); font-size:11px; }.fr-overlaps a { display:block; font-size:10px; }
+.fr-repos { display:flex; flex-direction:column; gap:10px; }.fr-repo { padding:12px; }.fr-repo > summary { font-weight:700; font-size:15px; }.fr-repo summary small { color:var(--dim); font-weight:400; margin-left:8px; }
+.fr-lane { margin:10px 0 0 14px; padding:10px; border-left:2px solid var(--border); background:var(--bg); }.fr-lane > summary { display:flex; gap:8px; align-items:center; cursor:pointer; }.fr-lane > summary small { margin-left:auto; }
+.fr-kind { color:var(--purple); border:1px solid var(--border); border-radius:4px; font:9px var(--mono); padding:2px 5px; }.fr-path { display:flex; flex-direction:column; gap:3px; color:var(--dim); font-size:10px; }.fr-path code { overflow-wrap:anywhere; color:var(--fg); }
+.fr-sessions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }.fr-session { display:grid; grid-template-columns:10px 1fr; gap:2px 7px; padding:9px; border:1px solid var(--border); border-radius:6px; text-decoration:none; min-width:0; }.fr-session:hover { background:var(--panel2); text-decoration:none; }.fr-session i { width:8px; height:8px; border-radius:50%; margin-top:5px; background:var(--dim); }.fr-session i.state-running { background:var(--green); box-shadow:0 0 7px var(--green); }.fr-session i.state-idle { background:var(--yellow); }.fr-session strong,.fr-session span,.fr-session small { grid-column:2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.fr-session span,.fr-session small { color:var(--dim); font-size:10px; }.fr-session small { white-space:normal; }
+.fr-session.fr-explicit { border-left:3px solid var(--accent); }.fr-session.fr-inferred { border-style:dashed; }
+@media(max-width:850px) { .fr-findings,.fr-overlaps,.fr-sessions { grid-template-columns:1fr; }.fr-brief { grid-template-columns:1fr 1fr; }.fr-heading,.fr-board-heading { flex-direction:column; }.fr-controls { justify-content:flex-start; } }
+@media(max-width:520px) { .fr-brief { grid-template-columns:1fr; }.fr-lane { margin-left:0; } }
+@media(prefers-reduced-motion:reduce) { .fr-attention *,.fr-repos * { scroll-behavior:auto!important; transition:none!important; } }

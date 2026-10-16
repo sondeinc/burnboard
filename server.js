@@ -56,6 +56,7 @@ const SOURCES = [createCodexSource({ argVal, localTokens: LOCAL_TOKENS }), creat
 const investigation = require('./lib/investigation').createInvestigation({
   sources: SOURCES, cacheDir: path.join(__dirname, '.cache', 'investigation'),
 });
+const flightRecorder = require('./lib/flight-recorder').createFlightRecorder({ investigation });
 // How far back per-command timestamps go. A source reporting null keeps them for
 // the whole transcript, so sub-day drilling is exact over all history; one that
 // reports a window makes older sub-day ranges fall back to bucketing each session
@@ -1880,6 +1881,19 @@ async function investigationApi(req, res, url) {
   return json(res, 404, { error: 'Unknown investigation route' });
 }
 
+async function flightRecorderApi(req, res, url) {
+  if (!investigationRequestAllowed(req)) return json(res, 403, { error: 'Flight recorder is available on this local origin only' });
+  if (req.method !== 'GET') return json(res, 405, { error: 'Use GET' });
+  if (url.searchParams.get('refresh') !== '0') await investigation.refresh(url.searchParams.get('refresh') === '1');
+  const action = url.pathname.slice('/api/flight/'.length);
+  if (action === 'overview') return json(res, 200, await flightRecorder.overview(Object.fromEntries(url.searchParams)));
+  if (action === 'session') {
+    const result = await flightRecorder.session(url.searchParams.get('session'));
+    return result ? json(res, 200, result) : json(res, 404, { error: 'Session not found' });
+  }
+  return json(res, 404, { error: 'Unknown flight recorder route' });
+}
+
 function json(res, code, obj) {
   const body = JSON.stringify(obj);
   res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
@@ -1890,13 +1904,19 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const pathn = url.pathname;
 
-  if (pathn === '/investigate.js' || pathn === '/investigate.css') {
+  if (['/investigate.js', '/investigate.css', '/flight-recorder.js', '/flight-recorder.css'].includes(pathn)) {
     res.writeHead(200, { 'Content-Type': pathn.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8', 'Cache-Control': 'no-store' });
     return fs.createReadStream(path.join(__dirname, 'lib', 'ui', path.basename(pathn)))
       .on('error', () => res.destroy()).pipe(res);
   }
   if (pathn.startsWith('/api/investigate/')) {
     investigationApi(req, res, url).catch(error => {
+      if (!res.headersSent) json(res, error.status || 500, { error: error.message });
+    });
+    return;
+  }
+  if (pathn.startsWith('/api/flight/')) {
+    flightRecorderApi(req, res, url).catch(error => {
       if (!res.headersSent) json(res, error.status || 500, { error: error.message });
     });
     return;

@@ -90,6 +90,18 @@
 .iv-error { color:var(--yellow); font-size:12px; overflow-wrap:anywhere; }
 .iv-notes-label { margin:16px 0; }
 .iv-notes { margin-top:6px; resize:vertical; }
+.iv-outcome { border:1px solid var(--border); border-radius:9px; background:var(--panel); padding:15px; margin:18px 0; }
+.iv-outcome-head { display:flex; justify-content:space-between; gap:12px; align-items:start; }
+.iv-outcome-head h3 { margin:3px 0; }
+.iv-trail { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:12px 0; }
+.iv-trail > div { padding:10px; background:var(--panel2); border-radius:6px; min-width:0; }
+.iv-trail h4 { margin:0 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--dim); }
+.iv-trail ul { padding-left:18px; margin:0; }
+.iv-trail li,.iv-trail p { font-size:10.5px; color:var(--dim); margin:4px 0; overflow-wrap:anywhere; }
+.iv-trail li small { display:block; color:var(--dim); }
+.iv-assessment { display:grid; grid-template-columns:180px 1fr; gap:12px; align-items:end; }
+.iv-assessment select { display:block; width:100%; margin-top:5px; }
+.iv-assessment textarea { margin-top:5px; resize:vertical; }
 .iv-handoff { background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:10px; width:min(850px,94vw); max-height:92vh; overflow:auto; padding:24px; }
 .iv-handoff::backdrop { background:rgba(0,0,0,.65); }
 .iv-handoff form { float:right; }
@@ -98,5 +110,5 @@
 .iv-handoff textarea { resize:vertical; }
 .iv-pin-review > div { display:flex; gap:12px; justify-content:space-between; padding:6px 0; overflow-wrap:anywhere; }
 @media(max-width:1000px) { .iv-filter-grid { grid-template-columns:1fr 1fr; } .iv-session-grid { grid-template-columns:1fr 1fr; } }
-@media(max-width:700px) { .iv-split,.iv-session-grid { grid-template-columns:1fr; } .iv-heading { align-items:start; flex-direction:column; } .iv-monitor { justify-content:flex-start; max-width:none; } .iv-heading h2 { font-size:26px; } .iv-pane-tabs { display:flex; } .iv-pane-tabs button[aria-pressed="true"] { border-color:var(--accent) !important; color:var(--accent) !important; } .iv-split[data-pane="events"] .iv-inspector,.iv-split[data-pane="evidence"] .iv-events-panel { display:none; } .iv-events { max-height:340px; } .iv-range { grid-template-columns:1fr; gap:8px; } }
+@media(max-width:700px) { .iv-split,.iv-session-grid,.iv-trail,.iv-assessment { grid-template-columns:1fr; } .iv-heading { align-items:start; flex-direction:column; } .iv-monitor { justify-content:flex-start; max-width:none; } .iv-heading h2 { font-size:26px; } .iv-pane-tabs { display:flex; } .iv-pane-tabs button[aria-pressed="true"] { border-color:var(--accent) !important; color:var(--accent) !important; } .iv-split[data-pane="events"] .iv-inspector,.iv-split[data-pane="evidence"] .iv-events-panel { display:none; } .iv-events { max-height:340px; } .iv-range { grid-template-columns:1fr; gap:8px; } }
 @media(prefers-reduced-motion:reduce) { #investigation *,#investigation *::before,#investigation *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }

@@ -60,10 +60,14 @@ test('investigation API is local-only and its opt-in stream commits appended eve
   assert.equal(script.status, 200);
   assert.match(script.body, /monitor: false/);
   assert.match(script.body, /if \(data\.monitor\) startMonitor\(\)/);
+  assert.doesNotMatch(script.body, /Agentic monitor/i);
+  assert.match(script.body, /Live Monitor/);
+  assert.equal((await request(base + '/flight-recorder.js')).status, 200);
   const wrongOrigin = await request(base + '/api/investigate/status', { Origin: 'http://example.test' });
   assert.equal(wrongOrigin.status, 403);
   const wrongHost = await request(base + '/api/investigate/status', { Host: 'example.test' });
   assert.equal(wrongHost.status, 403);
+  assert.equal((await request(base + '/api/flight/overview', { Origin: 'http://example.test' })).status, 403);
 
   const status = await waitFor(async () => {
     const response = await request(base + '/api/investigate/status');
@@ -103,4 +107,10 @@ test('investigation API is local-only and its opt-in stream commits appended eve
   const sessions = JSON.parse((await request(base + '/api/investigate/sessions?refresh=0')).body);
   const events = JSON.parse((await request(base + `/api/investigate/events?session=${sessions.sessions[0].key}&refresh=0`)).body);
   assert.ok(events.events.some(event => event.text === 'arrived live'));
+  const overview = JSON.parse((await request(base + '/api/flight/overview?refresh=0')).body);
+  assert.equal(overview.lanes.length, 1);
+  assert.match(overview.lanes[0].reason, /Git registration was not checked/);
+  const trail = JSON.parse((await request(base + `/api/flight/session?session=${sessions.sessions[0].key}&refresh=0`)).body);
+  assert.equal(trail.request.text, 'before monitor');
+  assert.match(trail.coverage, /Current filesystem state was not used/);
 });

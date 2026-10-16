@@ -27,7 +27,10 @@ History does not silently change an Economy comparison.
   first model seen.
 - **Investigate** — a local agent flight recorder with a selectable clock timeline, complete
   source-event inspection, cross-session search, evidence pins, saved investigations, notes, and
-  editable handoffs. Its real-time agentic monitor is optional and off by default.
+  editable handoffs. Its real-time **Live Monitor** is optional and off by default.
+- **Attention + Worktrees** — deterministic local findings for repeated failures, pending work,
+  and stale validation, plus repository/worktree lanes, recorded edit overlaps, and evidence-linked
+  outcome trails. Observations never stop or rerun an agent.
 - **Trends** — token consumption bucketed over time, split into two lists (by base command, by
   prompt); click a bar to drill into it, click a row to plot just that command or prompt.
 - **Agents** — the same spend cut by *who* spent it, so agent types can be compared on
@@ -124,7 +127,7 @@ It reads the flat `projects/<project-slug>/<session-id>.jsonl` transcripts under
 
 ## What it shows
 
-Six tabs: **Activity**, **History**, **Investigate**, **Trends**, **Agents**, **Economy**.
+Seven tabs: **Activity**, **History**, **Investigate**, **Worktrees**, **Trends**, **Agents**, **Economy**.
 
 ### Investigate
 
@@ -134,7 +137,7 @@ messages, tool inputs and results, paths, and recorded identifiers, then filter 
 worktree, agent, model, event type, or time. Open the exact original record, pin useful evidence,
 add notes, and preview an editable, size-bounded Markdown handoff.
 
-The **agentic monitor** control is an explicit opt-in. When enabled, one localhost event stream
+The **Live Monitor** control is an explicit opt-in. When enabled, one localhost event stream
 indexes complete records appended to recently active logs. New arrivals update the timeline while
 preserving selection, focus, and reading position; following the newest event is a separate choice.
 Turning the monitor off closes the stream and stops continuous scanning. See

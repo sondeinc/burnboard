@@ -6,6 +6,7 @@
 <meta name="color-scheme" content="dark light">
 <title>burnboard</title>
 <link rel="stylesheet" href="/investigate.css">
+<link rel="stylesheet" href="/flight-recorder.css">
 <script>
   // Apply the saved palette before first paint so reloads do not flash the
   // default theme. Unknown values are harmless and normalized by the app.
@@ -521,6 +522,7 @@
     <a href="#running" data-tab="running" class="on">Activity</a>
     <a href="#history" data-tab="history">History</a>
     <a href="#investigate" data-tab="investigate">Investigate</a>
+    <a href="#worktrees" data-tab="worktrees">Worktrees</a>
     <a href="#trends" data-tab="trends">Trends</a>
     <a href="#agents" data-tab="agents">Agents</a>
     <a href="#economy" data-tab="economy">Economy</a>
@@ -567,6 +569,7 @@
         </span>
       </span>
     </h2>
+    <div id="attention"><div class="empty">Building your attention brief…</div></div>
     <div id="running"><div class="empty">Waiting for activity…</div></div>
     <h2>Other live sessions</h2>
     <div id="live"></div>
@@ -637,12 +640,14 @@
     <div id="economy"><div class="empty">Loading…</div></div>
   </section>
   <section id="tab-investigate" hidden><div id="investigation"></div></section>
+  <section id="tab-worktrees" hidden><div id="worktrees"><div class="empty">Mapping recorded worktrees…</div></div></section>
 </main>
 
 <div id="overlay"><div id="detail"><span class="close" onclick="closeDetail()">×</span><div id="detailBody"></div></div></div>
 <div id="tip" hidden></div>
 
 <script src="/investigate.js"></script>
+<script src="/flight-recorder.js"></script>
 <script>
 const $ = (s, r = document) => r.querySelector(s);
 const THEME_KEY = 'burnboard.theme';
@@ -3426,7 +3431,7 @@ $('#ecoEffort').addEventListener('change', (e) => { ecoEffort = e.target.value; 
 // tabs
 // ---------------------------------------------------------------------------
 let curTab = 'running';
-const TABS = ['running', 'history', 'trends', 'agents', 'economy', 'investigate'];
+const TABS = ['running', 'history', 'trends', 'agents', 'economy', 'investigate', 'worktrees'];
 function showTab(name, restoreInvestigation = true) {
   name = name.split('?')[0];
   if (!TABS.includes(name)) name = 'running';
@@ -3506,6 +3511,7 @@ loadRepoFacets();
 const investigationUI = BurnboardInvestigation.mount($('#investigation'), {
   showTab: () => showTab('investigate', false),
 });
+const flightRecorderUI = BurnboardFlightRecorder.mount($('#attention'), $('#worktrees'));
 connect();
 showTab(location.hash.slice(1) || 'running');
 setInterval(() => { if (curTab === 'history') loadHistory(); }, 60000);

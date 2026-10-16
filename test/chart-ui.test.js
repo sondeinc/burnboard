@@ -146,3 +146,18 @@ test('Activity identifies the session worktree beside repository and branch', ()
   assert.ok(html.includes('worktree: ${esc(short(worktree, 56))}'));
   assert.ok(html.includes('title="${attr(t.cwd)}"'));
 });
+
+test('Release Two entry points and Live Monitor remain local and opt-in', () => {
+  assert.ok(html.includes('id="attention"'));
+  assert.ok(html.includes('data-tab="worktrees"'));
+  assert.ok(html.includes('id="worktrees"'));
+  assert.ok(html.includes('<script src="/flight-recorder.js"></script>'));
+  assert.ok(html.includes("BurnboardFlightRecorder.mount($('#attention'), $('#worktrees'))"));
+  const investigation = fs.readFileSync(path.resolve(__dirname, '..', 'lib', 'ui', 'investigate.js'), 'utf8');
+  assert.match(investigation, /monitor: false/);
+  assert.match(investigation, /Turn on Live Monitor/);
+  assert.doesNotMatch(investigation, /Agentic monitor/i);
+  const flight = fs.readFileSync(path.resolve(__dirname, '..', 'lib', 'ui', 'flight-recorder.js'), 'utf8');
+  for (const control of ['Acknowledge', 'Snooze 1h', 'Dismiss', 'Rule controls']) assert.ok(flight.includes(control));
+  assert.match(investigation, /Human outcome/);
+});
