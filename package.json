@@ -31,12 +31,15 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "benchmark:investigation": "node scripts/benchmark-investigation.js --sessions 50 --events 200"
   },
   "files": [
     "server.js",
     "token-count.js",
     "lib",
+    "scripts",
+    "docs",
     "index.html",
     "README.md",
     "LICENSE"

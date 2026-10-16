@@ -53,6 +53,9 @@ const { matchesModelFilter, modelGroups, vendorForRecord, vendorFromFilter } = r
 const { modelSlices, modelsForRecord, sliceRecordByModel } = require('./lib/model-usage');
 const { generateFixPrompt } = require('./lib/fix-prompt');
 const SOURCES = [createCodexSource({ argVal, localTokens: LOCAL_TOKENS }), createClaudeSource({ argVal, localTokens: LOCAL_TOKENS })];
+const investigation = require('./lib/investigation').createInvestigation({
+  sources: SOURCES, cacheDir: path.join(__dirname, '.cache', 'investigation'),
+});
 // How far back per-command timestamps go. A source reporting null keeps them for
 // the whole transcript, so sub-day drilling is exact over all history; one that
 // reports a window makes older sub-day ranges fall back to bucketing each session
@@ -1795,6 +1798,88 @@ const readIndex = () => {
   try { return fs.readFileSync(INDEX_PATH, 'utf8'); } catch (_) { return '<!doctype html><title>burnboard</title>index.html missing'; }
 };
 
+function investigationRequestAllowed(req) {
+  try {
+    const remote = req.socket.remoteAddress;
+    const host = new URL('http://' + req.headers.host).hostname;
+    if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(remote)
+        || !['localhost', '127.0.0.1', '[::1]'].includes(host)) return false;
+    return !req.headers.origin || new URL(req.headers.origin).host === req.headers.host;
+  } catch (_) { return false; }
+}
+
+const investigationStreams = new Set();
+let investigationStreamTimer = null, investigationStreamBusy = false, investigationStreamSignature = '';
+function writeInvestigationStatus(res, status) {
+  try { res.write(`event: status\ndata: ${JSON.stringify(status)}\n\n`); } catch (_) {}
+}
+async function broadcastInvestigationStatus() {
+  if (investigationStreamBusy || !investigationStreams.size) return;
+  investigationStreamBusy = true;
+  try {
+    await investigation.refreshLive();
+    const status = investigation.status();
+    const signature = JSON.stringify([status.revision, status.building, status.done, status.total, status.cancelled, status.errors]);
+    if (signature !== investigationStreamSignature) {
+      investigationStreamSignature = signature;
+      for (const res of investigationStreams) writeInvestigationStatus(res, status);
+    }
+  } finally { investigationStreamBusy = false; }
+}
+function openInvestigationStream(req, res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive', 'X-Accel-Buffering': 'no',
+  });
+  res.write('retry: 1000\n\n');
+  writeInvestigationStatus(res, investigation.status());
+  investigationStreams.add(res);
+  if (!investigationStreamTimer) investigationStreamTimer = setInterval(broadcastInvestigationStatus, 1000);
+  broadcastInvestigationStatus();
+  const keepalive = setInterval(() => { try { res.write(': live\n\n'); } catch (_) {} }, 15000);
+  req.on('close', () => {
+    clearInterval(keepalive); investigationStreams.delete(res);
+    if (!investigationStreams.size && investigationStreamTimer) {
+      clearInterval(investigationStreamTimer); investigationStreamTimer = null; investigationStreamSignature = '';
+    }
+  });
+}
+
+async function investigationApi(req, res, url) {
+  if (!investigationRequestAllowed(req)) return json(res, 403, { error: 'Investigation is available on this local origin only' });
+  const action = url.pathname.slice('/api/investigate/'.length);
+  if (action === 'stream') {
+    if (req.method !== 'GET') return json(res, 405, { error: 'Use GET' });
+    investigation.refresh();
+    return openInvestigationStream(req, res);
+  }
+  if (action === 'cancel') {
+    if (req.method !== 'POST') return json(res, 405, { error: 'Use POST' });
+    investigation.cancel();
+    return json(res, 200, { cancelled: true });
+  }
+  if (req.method !== 'GET') return json(res, 405, { error: 'Use GET' });
+  if (url.searchParams.get('refresh') !== '0') investigation.refresh(url.searchParams.get('refresh') === '1');
+  const q = Object.fromEntries(url.searchParams);
+  if (action === 'status') return json(res, 200, investigation.status());
+  if (action === 'sessions') {
+    const sessions = investigation.sessions(q);
+    return json(res, 200, { sessions: sessions.slice(0, 100), total: sessions.length, status: investigation.status() });
+  }
+  if (action === 'raw') {
+    const result = await investigation.getRaw(q.session, q.event);
+    return json(res, result ? 200 : 404, result || { error: 'Event not indexed; refresh the source index' });
+  }
+  if (action === 'events' || action === 'search') {
+    const abort = new AbortController();
+    res.on('close', () => abort.abort());
+    const result = await investigation.query(q, abort.signal);
+    if (!res.destroyed) json(res, 200, result);
+    return;
+  }
+  return json(res, 404, { error: 'Unknown investigation route' });
+}
+
 function json(res, code, obj) {
   const body = JSON.stringify(obj);
   res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
@@ -1804,6 +1889,18 @@ function json(res, code, obj) {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const pathn = url.pathname;
+
+  if (pathn === '/investigate.js' || pathn === '/investigate.css') {
+    res.writeHead(200, { 'Content-Type': pathn.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8', 'Cache-Control': 'no-store' });
+    return fs.createReadStream(path.join(__dirname, 'lib', 'ui', path.basename(pathn)))
+      .on('error', () => res.destroy()).pipe(res);
+  }
+  if (pathn.startsWith('/api/investigate/')) {
+    investigationApi(req, res, url).catch(error => {
+      if (!res.headersSent) json(res, error.status || 500, { error: error.message });
+    });
+    return;
+  }
 
   if (pathn === '/' || pathn === '/index.html') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -1983,7 +2080,7 @@ server.on('error', (err) => {
   throw err;
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '127.0.0.1', () => {
   console.log(`burnboard`);
   for (const s of SOURCES) {
     console.log(`  ${s.label} → ${s.root}  [${s.rootWhy}]`);

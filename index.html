@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
 <title>burnboard</title>
+<link rel="stylesheet" href="/investigate.css">
 <script>
   // Apply the saved palette before first paint so reloads do not flash the
   // default theme. Unknown values are harmless and normalized by the app.
@@ -519,6 +520,7 @@
   <nav id="tabs">
     <a href="#running" data-tab="running" class="on">Activity</a>
     <a href="#history" data-tab="history">History</a>
+    <a href="#investigate" data-tab="investigate">Investigate</a>
     <a href="#trends" data-tab="trends">Trends</a>
     <a href="#agents" data-tab="agents">Agents</a>
     <a href="#economy" data-tab="economy">Economy</a>
@@ -634,11 +636,13 @@
     </h2>
     <div id="economy"><div class="empty">Loading…</div></div>
   </section>
+  <section id="tab-investigate" hidden><div id="investigation"></div></section>
 </main>
 
 <div id="overlay"><div id="detail"><span class="close" onclick="closeDetail()">×</span><div id="detailBody"></div></div></div>
 <div id="tip" hidden></div>
 
+<script src="/investigate.js"></script>
 <script>
 const $ = (s, r = document) => r.querySelector(s);
 const THEME_KEY = 'burnboard.theme';
@@ -1304,7 +1308,7 @@ function focusBlock(t, depth) {
         <span class="badge">${ago(t.ageMs)}</span>
         ${t.taskActive ? '<span class="badge" style="color:var(--green)">● active turn</span>' : ''}
         <span class="fhead-tok">${kfmtN(t.cumReqTokens || tk.total_tokens)} tok${ctxPct != null ? ` · ${ctxPct}% ctx` : ''} · ${t.toolCallCount} cmds · ${t.turnsCompleted}/${t.turnsStarted} turns${t.compactions ? ` · ${t.compactions}⤺` : ''}</span>
-        <a href="#" onclick="openDetail('${t.id}');event.stopPropagation();return false" class="tl-link">full timeline →</a>
+        <a href="#" onclick="openInvestigation('${t.id}','${t.source}');event.stopPropagation();return false" class="tl-link">investigate →</a>
       </div>
       <div class="fmeta">${proj}${worktreeMeta}${mtag ? ' · ' + mtag : ''}${t.effort ? ' · effort:' + esc(t.effort) : ''}${t.serviceTier ? ' · ' + esc(t.serviceTier) : ''}</div>
       ${nested ? '' : lineageLine(t)}
@@ -1900,6 +1904,7 @@ function renderDetail(r) {
   $('#detailBody').dataset.id = id;   // lets a chart click tell "already open" from "open it"
   $('#detailBody').innerHTML = `
     <h3 style="margin:0 0 4px" title="${attr(name)}">${esc(short(name, 72))}</h3>
+    <button type="button" onclick="openInvestigation('${id}','${s.source}')">Open investigation →</button>
     <div class="fpath">${esc(s.id)}</div>
     ${s.firstUserText ? `<div class="prompt"><span class="lbl">session prompt</span><p>${esc(s.firstUserText)}</p></div>` : ''}
     <dl class="kv">
@@ -3421,8 +3426,9 @@ $('#ecoEffort').addEventListener('change', (e) => { ecoEffort = e.target.value; 
 // tabs
 // ---------------------------------------------------------------------------
 let curTab = 'running';
-const TABS = ['running', 'history', 'trends', 'agents', 'economy'];
-function showTab(name) {
+const TABS = ['running', 'history', 'trends', 'agents', 'economy', 'investigate'];
+function showTab(name, restoreInvestigation = true) {
+  name = name.split('?')[0];
   if (!TABS.includes(name)) name = 'running';
   curTab = name;
   for (const t of TABS) $('#tab-' + t).hidden = t !== name;
@@ -3431,8 +3437,14 @@ function showTab(name) {
   if (name === 'trends' && !trendData) loadTrends();
   if (name === 'agents' && !agData) loadAgents();
   if (name === 'economy' && !ecoData) loadEconomy();
+  if (name === 'investigate' && restoreInvestigation) investigationUI.restore(location.hash);
 }
 window.addEventListener('hashchange', () => showTab(location.hash.slice(1)));
+window.addEventListener('popstate', () => showTab(location.hash.slice(1)));
+function openInvestigation(id, source) {
+  closeDetail();
+  investigationUI.open(id, source);
+}
 
 // Parent-vendor toggle: the live panel and history already hold normalized
 // data so they just re-render; trends/economy are aggregated server-side and
@@ -3491,6 +3503,9 @@ $('#agRepo').addEventListener('change', (e) => { agRepo = e.target.value; agOpen
 $('#ecoRepo').addEventListener('change', (e) => { ecoRepo = e.target.value; ecoData = null; loadEconomy(); });
 loadRepoFacets();
 
+const investigationUI = BurnboardInvestigation.mount($('#investigation'), {
+  showTab: () => showTab('investigate', false),
+});
 connect();
 showTab(location.hash.slice(1) || 'running');
 setInterval(() => { if (curTab === 'history') loadHistory(); }, 60000);
