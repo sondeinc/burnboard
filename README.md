@@ -140,9 +140,83 @@ add notes, and preview an editable, size-bounded Markdown handoff.
 The **Live Monitor** control is an explicit opt-in. When enabled, one localhost event stream
 indexes complete records appended to recently active logs. New arrivals update the timeline while
 preserving selection, focus, and reading position; following the newest event is a separate choice.
-Turning the monitor off closes the stream and stops continuous scanning. See
+Turning the monitor off closes the stream and stops continuous scanning.
+
+Live Monitor does **not** launch Codex or Claude, call a model, consume model tokens, execute or
+rerun commands, stop an agent, or send a notification. The separate **Dive deeper** action in
+Economy is the only feature that can ask an installed assistant to interpret evidence, and it runs
+only after an explicit click. See
 [`docs/investigation.md`](docs/investigation.md) for limits, privacy boundaries, API routes, and the
 reproducible performance fixture.
+
+### Attention brief
+
+Activity starts with a return brief covering activity since the previous visit or a selected
+1-, 8-, 24-, or 72-hour interval. It groups the result by recorded repository and working
+directory, then shows the highest-priority twelve findings first. **Show all** reveals the rest of
+the bounded response.
+
+The initial rules are deliberately narrow and deterministic:
+
+- the same normalized command produced an equivalent recorded failure more than once;
+- the same command and equivalent result repeated at least three times (which may be intentional
+  polling, not a defect);
+- an identifiable tool call has had no paired result for at least two minutes;
+- a direct completion-like claim has no recorded successful validation, or a relevant edit was
+  recorded after the latest successful validation; and
+- an explicit child session's latest recorded activity has no later acknowledgement recorded in
+  its parent.
+
+Every finding names its trigger, severity rationale, time interval, uncertainty, and supporting
+events. **Investigate evidence** opens those records in the flight recorder. Acknowledge, dismiss,
+snooze, and per-rule controls stay in browser storage; they do not change transcripts or agent
+behavior. “No acknowledgement recorded” never means Burnboard knows a result was ignored.
+
+### Worktrees
+
+The **Worktrees** tab groups indexed sessions into repository and recorded-working-directory lanes.
+Full paths remain available, while compact labels keep large groups readable and collapsible.
+Worktree-shaped paths are identified only as path observations—Burnboard does not claim that a
+directory is registered with Git.
+
+Recorded parent/child identifiers produce solid explicit relationships. Sessions grouped only by
+repository or working directory use a dashed inferred relationship and explain that basis.
+Recorded intervals are labeled parallel, sequential, or unclassified; running, idle, ended, and
+unknown states retain their last-seen time.
+
+When two overlapping sessions record edits to the same repository-relative path, Burnboard shows
+an **observed edit overlap** with links to both sources. That is coordination evidence, not proof of
+a merge conflict.
+
+### Outcome and verification trail
+
+Each Investigate session separates the first recorded request, observed changes, completion-like
+claims, command results, validation, commit commands, integration commands, and delivery commands.
+A successful command, successful test, agent claim, commit attempt, merge attempt, and deployment
+attempt remain independent states. Absence of a recorded error never becomes success.
+
+Validation shows its command, recorded scope, result time, revision or working-state identity when
+available, and whether subsequent edits made it historical for the current recorded state. The
+present filesystem is never substituted for a missing historical snapshot. A developer can add an
+**Accepted**, **Needs work**, **Abandoned**, or **Unknown** assessment and a note; this human outcome
+remains separate from agent claims and automated checks.
+
+### Deterministic-analysis coverage
+
+Release Two analyzes at most the newest 300 indexed sessions and the newest 5,000 events per
+session while retaining its first request. Findings are capped at 250, observed overlaps at 200,
+and each outcome category at 200 records. The API reports analyzed, returned, matched, truncated,
+and omitted counts, while the UI surfaces the relevant archive and finding limits rather than
+silently implying complete coverage.
+
+The local, loopback-only API is source-read-only; its control endpoint can pause derived indexing
+but no route modifies an agent transcript:
+
+- `GET /api/flight/overview` returns the attention brief, findings, worktree lanes, overlaps, and
+  coverage;
+- `GET /api/flight/session?session=…` returns the bounded outcome and verification trail; and
+- `/api/investigate/*` provides status, sessions, evidence search, original-record inspection, and
+  the opt-in Live Monitor stream.
 
 ### Reading the charts
 
