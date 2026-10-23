@@ -31,6 +31,9 @@ History does not silently change an Economy comparison.
 - **Attention + Worktrees** — deterministic local findings for repeated failures, pending work,
   and stale validation, plus repository/worktree lanes, recorded edit overlaps, and evidence-linked
   outcome trails. Observations never stop or rerun an agent.
+- **Spin watch** — an Attention Brief rule for agents that are churning (review-round treadmills,
+  merge-gate ceremony), fed by an optional always-on hook that runs inside Codex and Claude Code
+  even when burnboard is closed, with a durable episode archive.
 - **Trends** — token consumption bucketed over time, split into two lists (by base command, by
   prompt); click a bar to drill into it, click a row to plot just that command or prompt.
 - **Agents** — the same spend cut by *who* spent it, so agent types can be compared on
@@ -147,7 +150,8 @@ rerun commands, stop an agent, or send a notification. The separate **Dive deepe
 Economy is the only feature that can ask an installed assistant to interpret evidence, and it runs
 only after an explicit click. See
 [`docs/investigation.md`](docs/investigation.md) for limits, privacy boundaries, API routes, and the
-reproducible performance fixture.
+reproducible performance fixture. [Spin watch](#spin-watch) is a separate, optional hook that
+runs inside the agents; it is not part of Live Monitor.
 
 ### Attention brief
 
@@ -156,8 +160,10 @@ Activity starts with a return brief covering activity since the previous visit o
 directory, then shows the highest-priority twelve findings first. **Show all** reveals the rest of
 the bounded response.
 
-The initial rules are deliberately narrow and deterministic:
+The rules are deliberately narrow and deterministic:
 
+- **spin watch**: an agent kept a churn-like pattern over its last ~120 actions (see
+  [Spin watch](#spin-watch));
 - the same normalized command produced an equivalent recorded failure more than once;
 - the same command and equivalent result repeated at least three times (which may be intentional
   polling, not a defect);
@@ -171,6 +177,141 @@ Every finding names its trigger, severity rationale, time interval, uncertainty,
 events. **Investigate evidence** opens those records in the flight recorder. Acknowledge, dismiss,
 snooze, and per-rule controls stay in browser storage; they do not change transcripts or agent
 behavior. “No acknowledgement recorded” never means Burnboard knows a result was ignored.
+
+Spin watch findings sort to the top, and each churning session is **one card**: that session's
+other findings in the same time span (repeated commands, repeated failures, long waits, and so on)
+nest under it as supporting evidence. Sessions without a spin finding render as before. A spin card
+shows the plain-English reasons (for example “review round 23”, “5 heavy gate runs in 2 h”,
+“1 new file in the last 120 actions”, “same command 6 times in a row”), the score history, the
+archived evidence trail, nearby human messages, and the outcome once known (merged, converged,
+abandoned, you called it out, or still running). **Investigate evidence** opens the session in the
+flight recorder.
+
+The **Since** picker adds **All time (archived)**, which lists every archived spin episode,
+including sessions whose transcripts are gone (Claude Code deletes transcripts after about 30
+days); those cards say so and show the archived trail instead. A small **Spin** counter in the
+header, visible on every tab, counts unacknowledged spin findings from the last 24 hours and opens
+the brief filtered to spin. Spin settings sit under **Rule controls** next to the per-rule
+checkboxes.
+
+### Spin watch
+
+Spin watch detects coding agents that are churning or spinning. Churn in long agent sessions is
+often review-round treadmills and merge-gate ceremony made of commands that *succeed*, so failures
+are not the signal. The scorer looks at the last ~120 actions and combines five signals, each
+ranked against reference distributions that ship in `lib/spin-reference.json` (so every live score
+uses the same 0–1 scale):
+
+- share of commands that are process ceremony (re-merging or rebasing on main, polling CI checks,
+  regenerating files, lint-fix loops, review and receipt bookkeeping);
+- few new files touched;
+- the highest “round N” / “pass N” mentioned;
+- waiting and polling per action; and
+- near-repeat commands (the same command with only numbers, paths, or ids changed).
+
+The equal-weight mean is smoothed over the last three readings. **Watch** starts at 0.70 and
+**alert** at 0.85. Two extra rules apply: a review round of 40 or more is an alert (20 or more is a
+watch), and the same command five or more times back-to-back is an alert (repeated polling is
+reported as waiting instead). Claude Code is less calibrated and is capped at watch by default.
+The thresholds and reference distributions were calibrated on the author's own transcripts, so
+treat a finding as a prompt to look, not proof; recalibrate on your own hand-labeled sessions with
+`scripts/spin-calibrate.js` (and rebuild the reference with `scripts/spin-reference.js`).
+
+**The sensor is an optional hook.** `bin/spin-hook.js` runs after each tool call
+(PostToolUse) inside Codex and Claude Code, even when burnboard is closed. It reads only the bytes
+appended to the transcript since its last run (on a first call into a very large transcript it
+starts from the last ~8 MB), always exits successfully, prints nothing unless it is nudging the
+agent, and logs its own errors to `~/.local/state/burnboard/spin/hook-errors.log`. Typical runs take
+50–70 ms. It never blocks or stops an agent.
+
+It keeps its state under `~/.local/state/burnboard/spin/`:
+
+- `sessions/` — a small per-session state file (byte offset, the last ~200 compact actions,
+  recent readings, last-notified levels);
+- `events.jsonl` — an append-only log of level changes, callouts, toasts, and nudges; and
+- `episodes/` — the durable **episode archive**: one file per session with ids, repository,
+  title or first request, parent/root ids, start/peak/end times, peak score and level, reasons,
+  score history, a capped trail of ~120 actions (time, operation, command skeleton, outcome or first
+  error line, file), nearby human messages (truncated), and the outcome. No full outputs are kept.
+
+Your own callouts (“churning”, “spinning your wheels”, “going in circles”, “over and over”) are
+detected in your messages and recorded on the episode, which labels it “you called it out”.
+Instructions such as “keep churn to a minimum”, “PR churn”, and UI spinners are ignored. A callout
+with no episode is recorded as a **miss**. If you keep your own hand labels in
+`~/.local/state/burnboard/spin/seed-labels.json` (or point `BURNBOARD_SPIN_SEED_LABELS` at a file),
+the backfill attaches them, with their notes, to the matching archived sessions; the calibration
+script reads the same file. Nothing is seeded without it.
+
+#### Installing the hook
+
+Installing changes your Claude Code and Codex configuration, so it is a separate, explicit step:
+
+```bash
+node scripts/spin-install.js          # shows exactly what would change
+node scripts/spin-install.js --yes    # backs up, writes, and validates
+node scripts/spin-backfill.js         # scores all history into the archive (re-runnable)
+```
+
+The installer makes a timestamped backup of `~/.claude/settings.json` and `~/.codex/hooks.json`,
+adds one `PostToolUse` entry to each that runs the hook (5-second timeout), keeps every existing
+entry (including `rtk hook` `PreToolUse` entries), and re-reads both files to validate them. It
+never edits `~/.codex/config.toml`. On its next start Codex reports that a hook is new and needs
+review (“Hooks can run outside the sandbox after you trust them”); until you trust it, Codex does
+not run it. `node scripts/spin-uninstall.js --yes` removes only the spin entries. Both scripts accept
+`--claude-settings`, `--codex-hooks`, `--hook`, and `--only claude|codex`.
+
+#### Settings
+
+`~/.config/burnboard/spin.json` is created with these defaults on first use. Edit it directly or
+under **Rule controls → Spin watch settings** in the brief; the hook reads it on every run.
+
+```json
+{
+  "enabled": true,
+  "desktop": { "enabled": true, "minLevel": "alert", "cooldownMinutes": 60 },
+  "agentNudge": { "mode": "shadow", "minLevel": "alert" },
+  "thresholds": { "watch": 0.70, "alert": 0.85, "reviewRoundWatch": 20, "reviewRoundAlert": 40, "backToBackRepeat": 5 },
+  "claudeMaxLevel": "watch",
+  "ceremonyPatterns": ["git merge[^|;&]*origin/(main|master)", "gh pr (view|checks)", "codegen", "…"],
+  "gatePatterns": ["pre-?merge", "ci:\\w+", "verify\\w*", "…"],
+  "mergePatterns": ["\\bgh pr merge\\b", "\\bglab mr merge\\b"],
+  "reviewHelperPatterns": ["review", "audit", "critic", "…"],
+  "sources": { "codex": true, "claude": true },
+  "episodes": { "retentionDays": null },
+  "dashboardUrl": "http://localhost:4317"
+}
+```
+
+- **Desktop notifications** are optional. With `desktop.enabled`, a level rising to `minLevel`
+  shows one Windows toast (through the built-in Windows notification API; nothing to install) naming
+  the tool, repository, session title, level, and top reasons. Clicking it opens the brief filtered
+  to spin. Each session notifies only on upward changes and at most once per cooldown.
+- **Agent nudge** is `off`, `shadow` (log the message it would send, the default), or `nudge`. In
+  nudge mode the hook adds this context once per level per session: “Spin check: *reasons*. Pause
+  and post to the user: the original goal, what is concretely left, and whether another round/gate
+  is worth it. Continue only if you can justify it.”
+- The pattern lists are regular expressions with project-neutral defaults; each list you set
+  replaces the default list, so add your own project's command names there. `ceremonyPatterns`
+  mark process-ceremony commands, `gatePatterns` name heavy gate scripts (a package, node or shell
+  invocation of one counts as a gate run), `mergePatterns` mark a successful merge, and
+  `reviewHelperPatterns` mark helper (subagent) names whose numbers count as review rounds.
+- `episodes.retentionDays` keeps archived episodes forever when `null`.
+
+#### Scorer versions and rescoring
+
+Every scorer state, archived episode and backfill manifest entry records the **scorer version**
+that produced it: a short hash of `lib/spin.js`, `lib/spin-reference.json` and the scoring settings
+(`thresholds`, the four pattern lists, `claudeMaxLevel`). Notification, nudge, source, retention and
+UI changes do not change it; neither do comment-only edits or line endings.
+
+Nothing is rescored at server start or when the brief loads; the dashboard only reads the archive.
+Re-running the backfill skips unchanged transcripts (same size, mtime and version) and transcripts
+the hook has already consumed, scores grown transcripts incrementally from their stored state, and
+rescores in full only transcripts scored by an earlier version (or rewritten, or never seen). When
+the version changes, the brief says how many threads are waiting and offers **Rescore now**, which
+runs one background backfill with a progress bar. Episodes whose transcripts are gone keep their
+original version and are marked as scored by an earlier version; episodes a rescore no longer
+finds are kept and marked superseded rather than deleted. `--force` rescores everything.
 
 ### Worktrees
 
@@ -209,12 +350,19 @@ and each outcome category at 200 records. The API reports analyzed, returned, ma
 and omitted counts, while the UI surfaces the relevant archive and finding limits rather than
 silently implying complete coverage.
 
+Spin watch findings are different: they come from the spin watch episode archive, not from this
+analysis, so they are not limited by these session, event, or finding caps, and they remain
+available after a transcript is deleted. The overview reports them separately as `spinCoverage`.
+
 The local, loopback-only API is source-read-only; its control endpoint can pause derived indexing
 but no route modifies an agent transcript:
 
 - `GET /api/flight/overview` returns the attention brief, findings, worktree lanes, overlaps, and
   coverage;
-- `GET /api/flight/session?session=…` returns the bounded outcome and verification trail; and
+- `GET /api/flight/session?session=…` returns the bounded outcome and verification trail;
+- `GET /api/flight/overview?archive=1` lists every archived spin episode;
+- `GET /api/spin/summary` feeds the header indicator, and `GET`/`PUT /api/spin/config` reads and
+  validates the spin settings (the only file any of these routes writes); and
 - `/api/investigate/*` provides status, sessions, evidence search, original-record inspection, and
   the opt-in Live Monitor stream.
 
@@ -538,6 +686,9 @@ models roll up to `codex`. The source name is the fallback for model-less or fut
 | `GET /api/advice?range=&subagents=&model=&effort=&source=&repo=` | findings for the same slice as `/api/economy`, plus the detected toolchain |
 | `GET /api/deepen?id=<finding>&runner=claude\|codex&model2=&effort2=` | runs the chosen local assistant over one finding's evidence (opt-in; spends your quota; 403 under `--no-ai`) |
 | `GET /api/facets` | hierarchical vendor/model groups plus the effort / repo values the filters offer |
+| `GET /api/flight/overview?since=&rules=&archive=1` | attention brief, findings (spin first), lanes, overlaps, coverage |
+| `GET /api/spin/summary` | spin findings from the last 24 h for the header indicator |
+| `GET` / `PUT /api/spin/config` | spin watch settings (loopback only; `PUT` takes JSON and validates it) |
 
 Every session record carries its raw `source` and canonical `vendor` (`"codex"` or `"claude"`).
 The aggregate endpoints accept an optional `source=` parent/vendor filter; omit it for the

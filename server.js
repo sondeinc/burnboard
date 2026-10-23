@@ -56,7 +56,10 @@ const SOURCES = [createCodexSource({ argVal, localTokens: LOCAL_TOKENS }), creat
 const investigation = require('./lib/investigation').createInvestigation({
   sources: SOURCES, cacheDir: path.join(__dirname, '.cache', 'investigation'),
 });
-const flightRecorder = require('./lib/flight-recorder').createFlightRecorder({ investigation });
+// Spin watch: findings come from the optional hook's episode archive
+// (~/.local/state/burnboard/spin), read-only here apart from its own config file.
+const spinBrief = require('./lib/spin-brief').createSpinBrief();
+const flightRecorder = require('./lib/flight-recorder').createFlightRecorder({ investigation, spin: spinBrief });
 // How far back per-command timestamps go. A source reporting null keeps them for
 // the whole transcript, so sub-day drilling is exact over all history; one that
 // reports a window makes older sub-day ranges fall back to bucketing each session
@@ -1881,17 +1884,86 @@ async function investigationApi(req, res, url) {
   return json(res, 404, { error: 'Unknown investigation route' });
 }
 
+// What the Brief is waiting on, for its loading indicator: the analysis phase
+// when one is running, else the index refresh. Reading it never starts work.
+let lastOverviewError = null;
+function flightProgress() {
+  const work = flightRecorder.progress();
+  const base = { updatedAt: Date.now(), error: lastOverviewError && Date.now() - lastOverviewError.at < 60000 ? lastOverviewError.message : null };
+  if (work.phase !== 'idle') return { ...base, active: true, ...work };
+  const s = investigation.status();
+  if (s.building) {
+    return { ...base, active: true, phase: 'index', unit: 'sessions', done: s.done, total: s.total, bytesDone: s.bytesDone, bytesTotal: s.bytesTotal,
+      percent: s.bytesTotal > 0 ? Math.min(100, s.bytesDone / s.bytesTotal * 100) : s.total ? s.done / s.total * 100 : null, determinate: s.total > 0 };
+  }
+  return { ...base, active: false, phase: 'idle', done: 0, total: 0, percent: null, determinate: false };
+}
+
 async function flightRecorderApi(req, res, url) {
   if (!investigationRequestAllowed(req)) return json(res, 403, { error: 'Flight recorder is available on this local origin only' });
   if (req.method !== 'GET') return json(res, 405, { error: 'Use GET' });
-  if (url.searchParams.get('refresh') !== '0') await investigation.refresh(url.searchParams.get('refresh') === '1');
   const action = url.pathname.slice('/api/flight/'.length);
-  if (action === 'overview') return json(res, 200, await flightRecorder.overview(Object.fromEntries(url.searchParams)));
+  if (action === 'progress') return json(res, 200, flightProgress());
+  if (url.searchParams.get('refresh') !== '0') await investigation.refresh(url.searchParams.get('refresh') === '1');
+  if (action === 'overview') {
+    try {
+      const result = await flightRecorder.overview(Object.fromEntries(url.searchParams));
+      lastOverviewError = null;
+      return json(res, 200, result);
+    } catch (error) { lastOverviewError = { message: error.message, at: Date.now() }; throw error; }
+  }
   if (action === 'session') {
     const result = await flightRecorder.session(url.searchParams.get('session'));
     return result ? json(res, 200, result) : json(res, 404, { error: 'Session not found' });
   }
   return json(res, 404, { error: 'Unknown flight recorder route' });
+}
+
+function readJsonBody(req, limit = 64 * 1024) {
+  return new Promise((resolve, reject) => {
+    let size = 0; const chunks = [];
+    req.on('data', chunk => {
+      size += chunk.length;
+      if (size > limit) { reject(Object.assign(new Error('Request body too large'), { status: 413 })); req.destroy(); return; }
+      chunks.push(chunk);
+    });
+    req.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); } catch (_) { reject(Object.assign(new Error('Body must be JSON'), { status: 400 })); } });
+    req.on('error', reject);
+  });
+}
+
+// Spin watch settings and the global indicator. The only write is the spin
+// config file; nothing here touches transcripts or agent configuration.
+async function spinApi(req, res, url) {
+  if (!investigationRequestAllowed(req)) return json(res, 403, { error: 'Spin watch is available on this local origin only' });
+  const action = url.pathname.slice('/api/spin/'.length);
+  if (action === 'config') {
+    if (req.method === 'GET') return json(res, 200, spinBrief.getConfig());
+    if (req.method !== 'PUT') return json(res, 405, { error: 'Use GET or PUT' });
+    if (!/^application\/json\b/i.test(req.headers['content-type'] || '')) return json(res, 415, { error: 'Use Content-Type: application/json' });
+    const result = spinBrief.putConfig(await readJsonBody(req));
+    return result.errors ? json(res, 400, { errors: result.errors }) : json(res, 200, { config: result.config });
+  }
+  // Rescoring threads scored by an earlier scorer version: an explicit, single
+  // background backfill run. Server start and Brief requests never rescore.
+  if (action === 'rescore') {
+    if (req.method === 'GET') {
+      const versions = spinBrief.versions(), r = versions.rescore;
+      return json(res, 200, { ...versions, phase: r.running ? 'rescore' : 'idle', unit: 'threads', done: r.done || 0, total: r.total || 0,
+        bytesDone: r.bytesDone || 0, bytesTotal: r.bytesTotal || 0, determinate: r.total > 0,
+        percent: r.bytesTotal > 0 ? Math.min(100, r.bytesDone / r.bytesTotal * 100) : r.total > 0 ? r.done / r.total * 100 : null });
+    }
+    if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST' });
+    const status = spinBrief.rescoreStatus();
+    if (status.running) return json(res, 409, { error: 'A spin rescore is already running', rescore: status });
+    const child = cp.spawn(process.execPath, [path.join(__dirname, 'scripts', 'spin-backfill.js'), '--quiet'], { detached: true, stdio: 'ignore', env: process.env });
+    child.on('error', () => {});
+    child.unref();
+    return json(res, 202, { started: true, pid: child.pid });
+  }
+  if (req.method !== 'GET') return json(res, 405, { error: 'Use GET' });
+  if (action === 'summary') return json(res, 200, spinBrief.summary());
+  return json(res, 404, { error: 'Unknown spin route' });
 }
 
 function json(res, code, obj) {
@@ -1904,13 +1976,19 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const pathn = url.pathname;
 
-  if (['/investigate.js', '/investigate.css', '/flight-recorder.js', '/flight-recorder.css'].includes(pathn)) {
+  if (['/investigate.js', '/investigate.css', '/flight-recorder.js', '/flight-recorder.css', '/progress.js'].includes(pathn)) {
     res.writeHead(200, { 'Content-Type': pathn.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8', 'Cache-Control': 'no-store' });
     return fs.createReadStream(path.join(__dirname, 'lib', 'ui', path.basename(pathn)))
       .on('error', () => res.destroy()).pipe(res);
   }
   if (pathn.startsWith('/api/investigate/')) {
     investigationApi(req, res, url).catch(error => {
+      if (!res.headersSent) json(res, error.status || 500, { error: error.message });
+    });
+    return;
+  }
+  if (pathn.startsWith('/api/spin/')) {
+    spinApi(req, res, url).catch(error => {
       if (!res.headersSent) json(res, error.status || 500, { error: error.message });
     });
     return;

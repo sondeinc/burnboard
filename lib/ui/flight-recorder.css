@@ -38,3 +38,45 @@
 @media(max-width:850px) { .fr-findings,.fr-overlaps,.fr-sessions { grid-template-columns:1fr; }.fr-brief { grid-template-columns:1fr 1fr; }.fr-heading,.fr-board-heading { flex-direction:column; }.fr-controls { justify-content:flex-start; } }
 @media(max-width:520px) { .fr-brief { grid-template-columns:1fr; }.fr-lane { margin-left:0; } }
 @media(prefers-reduced-motion:reduce) { .fr-attention *,.fr-repos * { scroll-behavior:auto!important; transition:none!important; } }
+.spin-badge { display:inline-flex; gap:5px; align-items:center; padding:3px 9px; border-radius:11px; border:1px solid var(--yellow); color:var(--yellow); font:11px var(--mono); text-decoration:none; }
+.spin-badge[hidden] { display:none; }.spin-badge b { font-weight:700; }.spin-badge.is-alert { border-color:var(--red); color:var(--red); }.spin-badge:hover { background:var(--panel2); text-decoration:none; }
+.fr-spin { grid-column:1/-1; }.fr-spin h3.fr-spin-thread { font-size:15px; overflow-wrap:anywhere; }.fr-spin-session { margin:0 0 4px; }.fr-spin-reasons { color:var(--fg)!important; font-size:12px!important; margin:0 0 4px; }.fr-outcome { color:var(--accent); text-transform:none; }
+.fr-spin-score { display:flex; gap:10px; align-items:center; color:var(--dim); font:10px var(--mono); margin:6px 0; }
+.fr-spark polyline { fill:none; stroke:var(--accent); stroke-width:1.5; }.fr-spark line { stroke-dasharray:3 3; stroke-width:1; }.fr-spark line.watch { stroke:var(--yellow); }.fr-spark line.alert { stroke:var(--red); }
+.fr-spin-deleted,.fr-spin-callout { padding:6px 8px; border-radius:5px; background:var(--panel2); color:var(--yellow)!important; }
+.fr-trail { width:100%; border-collapse:collapse; font-size:10px; margin:6px 0; }.fr-trail th,.fr-trail td { text-align:left; padding:3px 5px; border-bottom:1px solid var(--border); vertical-align:top; overflow-wrap:anywhere; }
+.fr-trail td code { display:inline!important; padding:0!important; background:none!important; }.fr-trail tr.ceremony td:nth-child(3) { color:var(--purple); }
+.fr-supporting { margin-top:8px; }.fr-supporting > .fr-finding { margin-top:8px; }.fr-disabled { opacity:.6; cursor:default; }
+.fr-focus { color:var(--accent)!important; }.fr-focus button { background:var(--panel2); border:1px solid var(--border); color:var(--fg); border-radius:5px; padding:2px 7px; cursor:pointer; font:11px inherit; }
+.fr-spin-form { margin-top:8px; padding-top:8px; border-top:1px solid var(--border); min-width:280px; }.fr-spin-form h4 { margin:0 0 6px; font-size:12px; }
+.fr-spin-form fieldset { border:1px solid var(--border); border-radius:5px; margin:6px 0; padding:4px 7px; }.fr-spin-form legend { color:var(--accent); font-size:10px; }
+.fr-spin-form input[type=number] { width:70px; }.fr-spin-form button { background:var(--accent); color:var(--on-accent); border:0; border-radius:5px; padding:5px 9px; cursor:pointer; }
+.fr-spin-note { font-size:10px!important; color:var(--dim)!important; max-width:340px; }
+/* Shared loading indicator (lib/ui/progress.js): determinate, indeterminate and error states. */
+.bb-progress { display:flex; flex-direction:column; gap:7px; padding:16px; margin:8px 0 22px; border:1px solid var(--border); background:var(--panel); border-radius:9px; max-width:640px; }
+.bb-progress-title { color:var(--accent); font:10px var(--mono); letter-spacing:1px; text-transform:uppercase; }
+.bb-progress-head { display:flex; align-items:center; gap:9px; }
+.bb-progress-phase { color:var(--fg); font-size:14px; }
+.bb-progress-spinner { width:14px; height:14px; flex:none; border-radius:50%; border:2px solid color-mix(in srgb, var(--accent) 25%, transparent); border-top-color:var(--accent); animation:bb-spin .9s linear infinite; }
+.bb-progress-track { position:relative; height:6px; border-radius:3px; overflow:hidden; background:var(--panel2); border:1px solid var(--border); }
+.bb-progress-fill { position:absolute; inset:0 auto 0 0; width:0; background:var(--accent); border-radius:3px; transition:width .4s ease; }
+.bb-progress[data-state="indeterminate"] .bb-progress-fill { width:35%; animation:bb-slide 1.4s ease-in-out infinite; }
+.bb-progress-text { margin:0; color:var(--dim); font:11px var(--mono); }
+.bb-progress[data-state="error"] { border-color:var(--red); }
+.bb-progress[data-state="error"] .bb-progress-phase { color:var(--red); }
+.bb-progress[data-state="error"] .bb-progress-text { color:var(--yellow); white-space:pre-wrap; overflow-wrap:anywhere; }
+.iv-empty .bb-progress,.fr-spin-pending .bb-progress { margin:6px 0; }
+@keyframes bb-spin { to { transform:rotate(360deg); } }
+@keyframes bb-slide { 0% { left:-35%; } 100% { left:100%; } }
+/* Reduced motion: no spinning or sliding; a still dotted ring and a striped bar,
+   while the text keeps updating every second (counts or elapsed seconds). */
+@media (prefers-reduced-motion:reduce) {
+  .bb-progress-spinner { animation:none; border-style:dotted; border-color:var(--accent); }
+  .bb-progress-fill { transition:none; }
+  .bb-progress[data-state="indeterminate"] .bb-progress-fill { animation:none; left:0; width:100%; opacity:.55;
+    background:repeating-linear-gradient(135deg, var(--accent) 0 6px, transparent 6px 12px); }
+}
+.fr-spin-pending { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:10px 0 0; padding:8px 10px; border:1px dashed var(--border); border-radius:6px; color:var(--dim); font-size:11.5px; }
+.fr-spin-pending p { margin:0; }.fr-spin-pending button { background:var(--panel2); border:1px solid var(--border); color:var(--fg); border-radius:5px; padding:3px 9px; cursor:pointer; }
+.fr-spin-pending .bb-progress { flex:1; border:0; padding:0; margin:0; background:none; }
+.fr-spin-version { color:var(--dim)!important; font-style:italic; }

@@ -147,6 +147,15 @@ test('Activity identifies the session worktree beside repository and branch', ()
   assert.ok(html.includes('title="${attr(t.cwd)}"'));
 });
 
+test('Activity has an Active threads header styled like the Attention brief', () => {
+  const tab = html.slice(html.indexOf('<section id="tab-running">'), html.indexOf('<section id="tab-history"'));
+  const header = tab.match(/<div class="fr-heading run-heading"><div><span class="fr-eyebrow">[^<]+<\/span><h2>Active threads<\/h2><p id="runCount">/);
+  assert.ok(header, 'Active threads header uses the Attention brief heading pattern');
+  assert.ok(tab.indexOf('Active threads') < tab.indexOf('<div id="running">'), 'header sits above the running list');
+  assert.match(html, /\$\('#runCount'\)\.textContent = liveCount/);
+  assert.match(html, /thread\$\{liveCount === 1 \? '' : 's'\} running now\./);
+});
+
 test('Release Two entry points and Live Monitor remain local and opt-in', () => {
   assert.ok(html.includes('id="attention"'));
   assert.ok(html.includes('data-tab="worktrees"'));

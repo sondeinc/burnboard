@@ -131,6 +131,7 @@
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim);
     margin: 26px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
   h2:first-child { margin-top: 6px; }
+  .run-heading { margin: 0 0 12px; padding: 0 16px; }
   .badge { font: 11px/1.4 var(--mono); background: var(--panel2); border: 1px solid var(--border);
     border-radius: 4px; padding: 1px 6px; color: var(--dim); white-space: nowrap; }
   .badge.model { color: var(--mcol, var(--accent)); border-color: color-mix(in srgb, var(--mcol, var(--accent)) 45%, var(--border));
@@ -527,6 +528,7 @@
     <a href="#agents" data-tab="agents">Agents</a>
     <a href="#economy" data-tab="economy">Economy</a>
   </nav>
+  <a href="#running?attention=spin" id="spinBadge" class="spin-badge" hidden title="Spin watch">Spin <b>0</b></a>
   <span class="seg" id="srcSeg" title="which agent's sessions to show">
     <button data-src="" class="on">All agents</button><button data-src="codex" id="srcCodex">Codex</button><button data-src="claude" id="srcClaude">Claude Code</button>
   </span>
@@ -570,6 +572,7 @@
       </span>
     </h2>
     <div id="attention"><div class="empty">Building your attention brief…</div></div>
+    <div class="fr-heading run-heading"><div><span class="fr-eyebrow">Live · running sessions and their subagents</span><h2>Active threads</h2><p id="runCount">Waiting for activity…</p></div></div>
     <div id="running"><div class="empty">Waiting for activity…</div></div>
     <h2>Other live sessions</h2>
     <div id="live"></div>
@@ -646,6 +649,7 @@
 <div id="overlay"><div id="detail"><span class="close" onclick="closeDetail()">×</span><div id="detailBody"></div></div></div>
 <div id="tip" hidden></div>
 
+<script src="/progress.js"></script>
 <script src="/investigate.js"></script>
 <script src="/flight-recorder.js"></script>
 <script>
@@ -1091,6 +1095,10 @@ function renderLiveTree(threads) {
   const wrap = (inner, d) =>
     `<div class="card-wrap"${d ? ` style="margin-left:${d * 24}px"` : ''}>${d ? '<span class="tree-tick"></span>' : ''}${inner}</div>`;
 
+  const liveCount = [...nodes.values()].filter(t => !t.synthetic && active(t)).length;
+  $('#runCount').textContent = liveCount
+    ? `${liveCount} thread${liveCount === 1 ? '' : 's'} running now.`
+    : featured.length ? 'Nothing running right now. Showing the most recent session.' : 'Nothing running right now.';
   $('#running').innerHTML = featured.length
     ? featured.map(r => node(r, 0)).join('')
     : '<div class="empty">No session is currently running.</div>';
@@ -3512,6 +3520,7 @@ const investigationUI = BurnboardInvestigation.mount($('#investigation'), {
   showTab: () => showTab('investigate', false),
 });
 const flightRecorderUI = BurnboardFlightRecorder.mount($('#attention'), $('#worktrees'));
+const spinBadge = BurnboardFlightRecorder.mountSpinBadge($('#spinBadge'));
 connect();
 showTab(location.hash.slice(1) || 'running');
 setInterval(() => { if (curTab === 'history') loadHistory(); }, 60000);

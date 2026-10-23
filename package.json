@@ -26,17 +26,23 @@
   "license": "MIT",
   "bin": {
     "burnboard": "server.js",
-    "burnboard-token-count": "token-count.js"
+    "burnboard-token-count": "token-count.js",
+    "burnboard-spin-hook": "bin/spin-hook.js"
   },
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
-    "benchmark:investigation": "node scripts/benchmark-investigation.js --sessions 50 --events 200"
+    "benchmark:investigation": "node scripts/benchmark-investigation.js --sessions 50 --events 200",
+    "spin:backfill": "node scripts/spin-backfill.js",
+    "spin:calibrate": "node scripts/spin-calibrate.js",
+    "spin:install": "node scripts/spin-install.js",
+    "spin:uninstall": "node scripts/spin-uninstall.js"
   },
   "files": [
     "server.js",
     "token-count.js",
+    "bin",
     "lib",
     "scripts",
     "docs",
