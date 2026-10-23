@@ -23,7 +23,7 @@ function archiveDir(t) {
   const episode = (id, file, extra = {}) => ({
     v: 1, threadId: id, source: extra.source || 'codex', file, cwd: '/repo/.worktrees/a/b', repo: 'app', title: `Thread ${id}`, firstRequest: 'Finish review round 13',
     isRoot: true, root: id, lastSeen: start + 3600000, episodes: [{ id: `codex-${id}-${start}`, start, peakT: start + 1800000, end: extra.end === undefined ? start + 3600000 : extra.end, endReason: 'calm',
-      peakScore: 0.91, peakLevel: extra.level || 'alert', reasons: ['review round 42', 'same command 7 times in a row', '1 new file in the last 120 actions'],
+      peakScore: 0.91, peakLevel: extra.level || 'alert', reasons: ['review round 42', 'same command 7 times in a row', '1 new file in the last 120 actions'], roundEvidence: { round: 42, text: 'Starting review round 42 now.' },
       lastHotT: start + 3600000, history: [[start, 0.71, 'watch'], [start + 1800000, 0.91, 'alert'], [start + 3600000, 0.6, 'alert']],
       trail: [{ t: start + 60000, op: 'cmd', cmd: 'node scripts/review.mjs next --pr N', outcome: 'ok', ceremony: true }, { t: start + 120000, op: 'edit', file: 'src/a.ts' }],
       humans: [{ t: start + 3000000, text: 'are you spinning your wheels?', who: 'user' }], callouts: extra.callouts || [], merged: null }],
@@ -181,7 +181,12 @@ test('nestUnderSpin keeps findings outside the spin span at top level', () => {
 
 // Renders the Attention Brief in a stubbed browser and returns its root node.
 async function mountBrief(t, overview, hash = '#running', savedState = null) {
-  const node = () => ({ innerHTML: '', className: '', dataset: {}, hidden: false, classList: { toggle() {} }, addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; }, replaceWith() {}, append() {} });
+  const node = () => {
+    const listeners = {};
+    return { innerHTML: '', className: '', dataset: {}, hidden: false, listeners, classList: { toggle() {} },
+      addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
+      querySelector() { return null; }, querySelectorAll() { return []; }, replaceWith() {}, append() {} };
+  };
   const root = node(), board = node();
   const saved = savedState ? { 'burnboard.flight-recorder.v1': JSON.stringify(savedState) } : {};
   const globals = { window: { scrollX: 0, scrollY: 0, addEventListener() {}, removeEventListener() {}, scrollTo() {}, dispatchEvent() {} },
@@ -196,6 +201,11 @@ async function mountBrief(t, overview, hash = '#running', savedState = null) {
   t.after(() => { mounted.destroy(); for (const [k, d] of Object.entries(previous)) { if (d) Object.defineProperty(globalThis, k, d); else delete globalThis[k]; } });
   await new Promise(resolve => setImmediate(resolve));
   await new Promise(resolve => setImmediate(resolve));
+  root.action = (action, id) => {
+    const target = { dataset: { fr: action, ...(id ? { id } : {}) }, closest() { return this; } };
+    for (const listener of root.listeners.click || []) listener({ target });
+  };
+  root.savedState = () => JSON.parse(saved['burnboard.flight-recorder.v1']);
   return root;
 }
 
@@ -212,9 +222,10 @@ test('the Brief renders a spin card with nested findings, deleted-transcript not
   const root = await mountBrief(t, overview, '#running?attention=spin');
   assert.match(root.innerHTML, /fr-finding fr-spin severity-high/);
   assert.match(root.innerHTML, /Spin alert: review round 42 · same command 7 times in a row/);
+  assert.match(root.innerHTML, /Matched current-round statement: “Starting review round 42 now\.”/);
   // The thread name is the heading, then agent · path, then the reasons line.
-  assert.match(root.innerHTML, /<h3 class="fr-spin-thread">Move the docs site to its new domain<\/h3>\s*<p class="fr-spin-session">Codex · https:\/\/github\.com\/example\/app<\/p>\s*<p class="fr-spin-reasons">Spin alert: review round 42 · same command 7 times in a row<\/p>/);
-  assert.match(root.innerHTML, /<h3 class="fr-spin-thread">Thread gone<\/h3>\s*<p class="fr-spin-session">Codex · app<\/p>\s*<p class="fr-spin-reasons">Spin alert:/);
+  assert.match(root.innerHTML, /<h3 class="fr-spin-thread">Move the docs site to its new domain<\/h3>\s*<div class="fr-finding-body">\s*<p class="fr-spin-session">Codex · https:\/\/github\.com\/example\/app<\/p>\s*<p class="fr-spin-reasons">Spin alert: review round 42 · same command 7 times in a row<\/p>/);
+  assert.match(root.innerHTML, /<h3 class="fr-spin-thread">Thread gone<\/h3>\s*<div class="fr-finding-body">\s*<p class="fr-spin-session">Codex · app<\/p>\s*<p class="fr-spin-reasons">Spin alert:/);
   // An untitled thread falls back to a short session id, never an empty heading.
   assert.match(root.innerHTML, /<h3 class="fr-spin-thread">Session 019a9999-aaaa<\/h3>/);
   // Every spin card gets the spin layout, not just the first one in the list.
@@ -266,6 +277,26 @@ test('spin and other findings each get a subheading with a count', async t => {
   assert.ok(at('data-fr-group="other"') < at('data-finding="p1"'));
   // Non-spin cards still name their rule.
   assert.match(cardTop(html, 'p1'), /<span class="fr-rule">Long waits<\/span>/);
+});
+
+test('every Attention Brief card can collapse, with one control for all cards', async t => {
+  const root = await mountBrief(t, briefOf([spinCard('s1', 'watch'), plainFinding('p1'), plainFinding('p2')]));
+  assert.match(root.innerHTML, /data-fr="toggle-all-cards"[^>]*>Collapse all cards<\/button>/);
+  assert.equal((root.innerHTML.match(/data-fr="toggle-card"/g) || []).length, 3);
+
+  root.action('toggle-card', 's1');
+  assert.match(root.innerHTML, /fr-finding fr-spin severity-medium is-collapsed" data-finding="s1"/);
+  assert.match(cardTop(root.innerHTML, 's1'), /aria-expanded="false">Expand<\/button>/);
+  assert.equal(root.savedState().collapsedFindings.s1, true, 'individual state persists');
+
+  root.action('toggle-all-cards');
+  assert.equal((root.innerHTML.match(/ is-collapsed" data-finding=/g) || []).length, 3);
+  assert.match(root.innerHTML, /data-fr="toggle-all-cards"[^>]*>Expand all cards<\/button>/);
+
+  root.action('toggle-all-cards');
+  assert.equal((root.innerHTML.match(/ is-collapsed" data-finding=/g) || []).length, 0);
+  assert.match(root.innerHTML, /data-fr="toggle-all-cards"[^>]*>Collapse all cards<\/button>/);
+  assert.deepEqual(root.savedState().collapsedFindings, {});
 });
 
 test('with no spin cards the Brief shows no subheadings', async t => {

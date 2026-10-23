@@ -51,16 +51,42 @@ test('merge-gate treadmill made of succeeding commands reaches at least watch wi
   assert.ok(state.ep.trail.every(row => !row.cmd || row.cmd.length <= 120));
 });
 
-test('review round 40+ is an alert; round 20+ is a watch', () => {
+test('an explicitly current review round 40+ is an alert; round 20+ is a watch', () => {
   const base = healthyCodex('rounds', 20);
   const alert = run([...base, codex.say(900, 'Starting review round 42 now.'), codex.cmd(901, 'pnpm test')]);
   assert.equal(alert.assessment.level, 'alert');
   assert.ok(alert.reasons.includes('review round 42'), alert.reasons.join(' | '));
+  assert.deepEqual(alert.state.ep.roundEvidence, { round: 42, text: 'Starting review round 42 now.' });
   const watch = run([...base, codex.say(900, 'Review pass 23 found another issue.'), codex.cmd(901, 'pnpm test')]);
   assert.equal(watch.assessment.level, 'watch');
+  const current = run([...base, codex.say(900, "We're now on pass 40."), codex.cmd(901, 'pnpm test')]);
+  assert.equal(current.assessment.level, 'alert');
+  const completed = run([...base, codex.say(900, 'Round 43 reviewed the latest fixes.'), codex.cmd(901, 'pnpm test')]);
+  assert.equal(completed.assessment.level, 'alert');
   const pr = run([...base, codex.cmd(899, 'echo'), JSON.stringify({ timestamp: '2026-03-02T12:30:00Z', type: 'response_item', payload: { type: 'function_call', name: 'spawn_agent', call_id: 's1', arguments: JSON.stringify({ task_name: 'review_pr_3456' }) } })]);
   assert.equal(pr.state.maxRound, 345, 'the round feature reads digits from review-like helper names');
   assert.equal(pr.assessment.level, 'calm', 'but the plain-English rule ignores a PR number');
+});
+
+test('historical and ambiguous round mentions inform the score without immediately alerting', () => {
+  const examples = [
+    'The old memory snapshot was superseded by substantial work through round 87.',
+    'The handoff records round 83 as merge-ready.',
+    'Previous work reached review round 76 before this session.',
+    'Review round 87.',
+    'We are not starting round 91.',
+  ];
+  for (const [index, text] of examples.entries()) {
+    const result = run([...healthyCodex(`historical-${index}`, 39), codex.say(900, text), codex.cmd(901, 'pnpm test')]);
+    assert.equal(result.assessment.level, 'calm', text);
+    assert.equal(result.assessment.score, 0, text);
+    assert.ok(result.state.maxRound >= 76, text);
+    assert.ok(result.state.wins[0].mr >= 76, `round remains available to the normal score: ${text}`);
+    assert.equal(result.state.wins[0].rmax, 0, `round does not enter the immediate rule: ${text}`);
+    assert.equal(result.state.ruleRound || 0, 0, text);
+    assert.equal(result.state.roundEvidence, null, text);
+    assert.equal(result.state.ep, null, text);
+  }
 });
 
 test('the same command 5+ times back-to-back is an alert; repeated polling is reported as waiting', () => {

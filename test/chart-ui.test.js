@@ -81,6 +81,17 @@ test('plan credits use localized whole numbers rather than currency', () => {
   assert.ok(!html.includes('$${esc(rl.credits.balance)} credit'));
 });
 
+test('Activity shows rate limits once in the detailed usage summary', () => {
+  const script = inlineScripts()[1];
+  const renderStart = script.indexOf('function render(snap)');
+  const renderEnd = script.indexOf('function agentLimits(', renderStart);
+  const render = script.slice(renderStart, renderEnd);
+  assert.ok(render.includes("$('#hdrstat').textContent"));
+  assert.ok(!render.includes('agentLimits(snap)'), 'header does not duplicate the usage limits');
+  assert.ok(html.includes('<div id="usageSummary" class="tgrand" hidden></div>'));
+  assert.ok(script.includes('for (const l of agentLimits(snap))'));
+});
+
 test('live Activity marks every rebuilt scrolling pane with a stable session key', () => {
   for (const suffix of [':prompt:first', ':prompt:latest', ':commands', ':turns']) {
     assert.ok(html.includes(`t.id + '${suffix}'`), `keys ${suffix}`);

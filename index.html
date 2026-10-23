@@ -146,9 +146,8 @@
   .facetmark { display: inline-flex; vertical-align: -2px; margin-left: 8px; }
   .facetmark + select.facet { margin-left: 4px; }
   .mmark { display: inline-flex; vertical-align: -2px; margin-right: 4px; }
-  .hdrlim, .agentlim { display: inline-flex; align-items: center; gap: 5px; }
-  .hdrlim b, .agentlim b { color: var(--fg); font-weight: 600; }
-  #hdrstat .sep { color: var(--border); }
+  .agentlim { display: inline-flex; align-items: center; gap: 5px; }
+  .agentlim b { color: var(--fg); font-weight: 600; }
   .badge.tier { color: var(--purple); }
   .badge.review { color: var(--yellow); }
   .badge.agent { color: var(--purple); border-color: #4a3a6a; }
@@ -850,14 +849,8 @@ function render(snap) {
   const threads = (snap.threads || []).filter(t => (!srcFilter || vendorForSession(t) === srcFilter)
     && (!runRepo || t.repoKey === runRepo));
   const running = threads.filter(t => t.status === 'running');
-  const heads = agentLimits(snap).map(l => {
-    const w = tightestWindow(l.windows);
-    return `<span class="hdrlim" title="${attr(limitWindowTitle(l, w))}">${
-      l.mark}${limitWindowText(w, true)}${l.stale ? ' · stale' : ''}</span>`;
-  }).join('<span class="sep"> · </span>');
-  $('#hdrstat').innerHTML =
-    `${threads.length} live · ${running.length} running · updated ${esc(new Date(snap.now).toLocaleTimeString())}`
-    + (heads ? ' · ' + heads : '');
+  $('#hdrstat').textContent =
+    `${threads.length} live · ${running.length} running · updated ${new Date(snap.now).toLocaleTimeString()}`;
 
   renderUsage(snap);
   renderLiveTree(threads);
@@ -865,7 +858,7 @@ function render(snap) {
 
 // Codex reports its windows in the rollout stream. Claude Code supplies either
 // a cached ~/.claude.json snapshot or a newer transcript limit event. Both are
-// normalised so the header and usage bar can render them consistently.
+// normalised so the usage bar can render them consistently.
 function agentLimits(snap) {
   const out = [];
   const rl = snap.rateLimits;
@@ -882,34 +875,15 @@ function agentLimits(snap) {
   }
   return out;
 }
-// the binding window is the one with the least headroom left
-const windowUrgency = (w) => w.status === 'rejected' ? 1000
-  : w.status === 'allowed_warning' ? 999
-  : typeof w.used_percent === 'number' ? w.used_percent : -1;
-const tightestWindow = (ws) => ws.reduce((a, b) => (windowUrgency(b) > windowUrgency(a) ? b : a));
 const pctLeft = (used) => (100 - used).toFixed(used > 99 ? 1 : 0);
 
-function limitWindowText(w, compact = false) {
-  const period = compact ? winShort(w.window_minutes) : winLabel(w.window_minutes);
+function limitWindowText(w) {
+  const period = winLabel(w.window_minutes);
   if (w.status === 'rejected') return `<b>limit reached</b> ${period}`;
   if (w.status === 'allowed_warning') return `<b>near limit</b> ${period}`;
   if (typeof w.used_percent === 'number')
-    return `<b>${pctLeft(w.used_percent)}%</b> left${compact ? ' ' : ' of '}${period}`;
+    return `<b>${pctLeft(w.used_percent)}%</b> left of ${period}`;
   return `<b>${esc(w.status || 'status unknown')}</b> ${period}`;
-}
-
-function limitWindowTitle(l, w) {
-  const state = w.status === 'rejected' ? 'limit reached'
-    : typeof w.used_percent === 'number' ? `${w.used_percent}% used` : (w.status || 'status unknown');
-  const reset = untilReset(w.resets_at);
-  const observed = l.observedAt ? `; observed ${l.observedAt} from ${l.source}` : '';
-  return `${l.label}: ${state} for the ${winLabel(w.window_minutes)} window${reset ? `; resets in ${reset}` : ''}${observed}`;
-}
-
-function winShort(mins) {
-  if (mins >= 10080) return 'wk';
-  if (mins >= 1440) return Math.round(mins / 1440) + 'd';
-  return Math.round(mins / 60) + 'h';
 }
 function winLabel(mins) {
   if (mins >= 10080) return `${Math.round(mins / 10080)}-week`;
