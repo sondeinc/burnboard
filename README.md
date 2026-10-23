@@ -244,20 +244,68 @@ script reads the same file. Nothing is seeded without it.
 
 #### Installing the hook
 
-Installing changes your Claude Code and Codex configuration, so it is a separate, explicit step:
+Installing changes your Claude Code and Codex configuration, so it is a separate, explicit step.
+Run these from the burnboard checkout you will keep using; the hook entry records that checkout's
+path.
+
+1. **Preview and install the hook.**
+
+   ```bash
+   node scripts/spin-install.js          # shows exactly what would change
+   node scripts/spin-install.js --yes    # backs up, writes, and validates
+   ```
+
+   The installer makes a timestamped backup of `~/.claude/settings.json` and
+   `~/.codex/hooks.json`, adds one `PostToolUse` entry to each that runs the hook (5-second
+   timeout), keeps every existing entry (including `rtk hook` `PreToolUse` entries), and re-reads
+   both files to validate them. It never edits `~/.codex/config.toml`.
+
+2. **Approve the hook in Codex.** Codex runs a new or changed hook only after you trust it. Start
+   Codex in a terminal:
+
+   ```bash
+   codex
+   ```
+
+   It reports that a hook is new and needs review (“Hooks can run outside the sandbox after you
+   trust them”). Choose **Trust all and continue**, then type `/quit`; no task is needed. Do this
+   in a terminal even if you normally use Codex inside an editor (Zed, VS Code and similar):
+   editor integrations run Codex in the background, where it cannot show the review prompt, so the
+   hook would stay silently off. The approval is saved in `~/.codex/config.toml` and applies
+   everywhere Codex runs.
+
+3. **Restart agents that were already running.** Codex reads its hooks when it starts, so restart
+   Codex, or the editor that hosts it, after approving. Claude Code normally picks up the new hook
+   in open sessions; restart any session where it doesn't fire.
+
+4. **Score your history** (optional, re-runnable) so the brief has past episodes from the start:
+
+   ```bash
+   node scripts/spin-backfill.js
+   ```
+
+5. **Start the dashboard** from the same checkout and open the brief:
+
+   ```bash
+   node server.js            # -> http://localhost:4317
+   ```
+
+   The hook keeps scoring and archiving while the dashboard is closed; the dashboard is only needed
+   to view the results.
+
+6. **Check that it works.** After an agent's next tool call, its state file appears or updates
+   under `~/.local/state/burnboard/spin/sessions/`, and `hook-errors.log` in the same folder stays
+   quiet.
+
+**Moving or upgrading.** The hook entry records the absolute paths of this checkout and of the
+Node binary. After moving or re-cloning burnboard, or upgrading Node, uninstall and reinstall from
+the new location, then approve the changed hook in Codex again (step 2) and restart Codex (step 3):
 
 ```bash
-node scripts/spin-install.js          # shows exactly what would change
-node scripts/spin-install.js --yes    # backs up, writes, and validates
-node scripts/spin-backfill.js         # scores all history into the archive (re-runnable)
+node scripts/spin-uninstall.js --yes && node scripts/spin-install.js --yes
 ```
 
-The installer makes a timestamped backup of `~/.claude/settings.json` and `~/.codex/hooks.json`,
-adds one `PostToolUse` entry to each that runs the hook (5-second timeout), keeps every existing
-entry (including `rtk hook` `PreToolUse` entries), and re-reads both files to validate them. It
-never edits `~/.codex/config.toml`. On its next start Codex reports that a hook is new and needs
-review (“Hooks can run outside the sandbox after you trust them”); until you trust it, Codex does
-not run it. `node scripts/spin-uninstall.js --yes` removes only the spin entries. Both scripts accept
+`node scripts/spin-uninstall.js --yes` on its own removes only the spin entries. Both scripts accept
 `--claude-settings`, `--codex-hooks`, `--hook`, and `--only claude|codex`.
 
 #### Settings
