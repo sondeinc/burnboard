@@ -52,7 +52,8 @@ const LIVE_WINDOW_MS = 15 * 60 * 1000;   // show in live feed if touched within 
 const HOUR_WINDOW_MS = 1 * 3600 * 1000;
 const HOUR_SLOT_MIN = 5;
 const RUNNING_MS = 15 * 1000;  // green dot
-const IDLE_MS = 5 * 60 * 1000; // yellow dot
+// yellow dot; the same default clock spin watch cards use for "active" vs "idle"
+const IDLE_MS = require('./lib/ui/spin-activity').DEFAULT_ACTIVE_MINUTES * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // sources: Codex CLI (~/.codex/sessions) and Claude Code (~/.claude/projects)
@@ -1990,7 +1991,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const pathn = url.pathname;
 
-  if (['/investigate.js', '/investigate.css', '/flight-recorder.js', '/flight-recorder.css', '/progress.js'].includes(pathn)) {
+  if (['/investigate.js', '/investigate.css', '/flight-recorder.js', '/flight-recorder.css', '/progress.js', '/spin-activity.js'].includes(pathn)) {
     res.writeHead(200, { 'Content-Type': pathn.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8', 'Cache-Control': 'no-store' });
     return fs.createReadStream(path.join(__dirname, 'lib', 'ui', path.basename(pathn)))
       .on('error', () => res.destroy()).pipe(res);

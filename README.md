@@ -184,9 +184,13 @@ other findings in the same time span (repeated commands, repeated failures, long
 nest under it as supporting evidence. Sessions without a spin finding render as before. A spin card
 shows the plain-English reasons (for example “review round 23”, “5 heavy gate runs in 2 h”,
 “1 new file in the last 120 actions”, “same command 6 times in a row”), the score history, the
-archived evidence trail, nearby human messages, and the outcome once known (merged, converged,
-abandoned, you called it out, or still running). **Investigate evidence** opens the session in the
-flight recorder.
+archived evidence trail, nearby human messages, and the outcome: merged, converged, abandoned, or
+you called it out once the episode has ended. While it is still open, the card says **active** (the
+thread's last recorded action or message was at most 5 minutes ago, the same clock as the Activity
+tab's idle dot), **idle since HH:MM** (local time, with the date when it was not today), or
+**abandoned** after 12 hours with no activity. The label is worked out when the brief loads and
+updates while the page stays open; the `outcome` field in `/api/spin/summary` and the brief's
+findings uses the same words. **Investigate evidence** opens the session in the flight recorder.
 
 The **Since** picker adds **All time (archived)**, which lists every archived spin episode,
 including sessions whose transcripts are gone (Claude Code deletes transcripts after about 30
@@ -343,6 +347,7 @@ under **Rule controls → Spin watch settings** in the brief; the hook reads it 
   "reviewHelperPatterns": ["review", "audit", "critic", "…"],
   "sources": { "codex": true, "claude": true },
   "episodes": { "retentionDays": null },
+  "activity": { "activeMinutes": 5, "abandonHours": 12 },
   "dashboardUrl": "http://localhost:4317"
 }
 ```
@@ -361,13 +366,17 @@ under **Rule controls → Spin watch settings** in the brief; the hook reads it 
   invocation of one counts as a gate run), `mergePatterns` mark a successful merge, and
   `reviewHelperPatterns` mark helper (subagent) names whose numbers count as review rounds.
 - `episodes.retentionDays` keeps archived episodes forever when `null`.
+- `activity.activeMinutes` and `activity.abandonHours` set how an open episode's card reads: active
+  while the thread's newest recorded event is at most `activeMinutes` old, then idle since that
+  time, then abandoned once `abandonHours` pass with no activity. They only change the wording, not
+  scores, so they are not part of the scorer version. Missing values use the defaults (5 and 12).
 
 #### Scorer versions and rescoring
 
 Every scorer state, archived episode and backfill manifest entry records the **scorer version**
 that produced it: a short hash of `lib/spin.js`, `lib/spin-reference.json` and the scoring settings
-(`thresholds`, the four pattern lists, `claudeMaxLevel`). Notification, nudge, source, retention and
-UI changes do not change it; neither do comment-only edits or line endings.
+(`thresholds`, the four pattern lists, `claudeMaxLevel`). Notification, nudge, source, retention,
+activity-label and UI changes do not change it; neither do comment-only edits or line endings.
 
 Nothing is rescored at server start or when the brief loads; the dashboard only reads the archive.
 Re-running the backfill skips unchanged transcripts (same size, mtime and version) and transcripts

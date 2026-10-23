@@ -46,7 +46,7 @@ test('the scorer version covers scoring code, reference and scoring config, not 
   const v = version.scorerVersion(base);
   assert.match(v, /^s1-[0-9a-f]{12}$/);
   assert.equal(version.scorerVersion({ ...base, desktop: { enabled: false, minLevel: 'watch', cooldownMinutes: 1 }, agentNudge: { mode: 'nudge', minLevel: 'watch' },
-    sources: { codex: true, claude: false }, episodes: { retentionDays: 30 }, dashboardUrl: 'http://localhost:9999', enabled: false }), v, 'display-only settings');
+    sources: { codex: true, claude: false }, episodes: { retentionDays: 30 }, dashboardUrl: 'http://localhost:9999', enabled: false, activity: { activeMinutes: 30, abandonHours: 2 } }), v, 'display-only settings');
   assert.notEqual(version.scorerVersion({ ...base, thresholds: { ...base.thresholds, watch: 0.71 } }), v);
   assert.notEqual(version.scorerVersion({ ...base, claudeMaxLevel: 'alert' }), v);
   assert.notEqual(version.scorerVersion({ ...base, ceremonyPatterns: [...base.ceremonyPatterns, 'extra'] }), v);
