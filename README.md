@@ -59,7 +59,7 @@ node server.js            # -> http://localhost:4317
 ```
 
 Options: `--port 8080`, `--root /path/to/.codex`, `--claude-root /path/to/.claude`, `--no-ai`, `--local-tokens`,
-`--no-spin-check`, `--spin-check-only` (see [Installing the hook](#installing-the-hook)).
+`--no-spin-check`, `--spin-check-only` (see [Installing the agent hooks](#installing-the-agent-hooks)).
 
 `--no-ai` (or `BURNBOARD_NO_AI=1`) disables **Dive deeper**, the optional feature that runs
 a Codex or Claude Code agent to analyze the evidence behind a token-usage finding. Burnboard will
@@ -247,80 +247,155 @@ with no episode is recorded as a **miss**. If you keep your own hand labels in
 the backfill attaches them, with their notes, to the matching archived sessions; the calibration
 script reads the same file. Nothing is seeded without it.
 
-#### Installing the hook
+#### Installing the agent hooks
 
-Installing changes your Claude Code and Codex configuration, so it is a separate, explicit step.
-Run these from the burnboard checkout you will keep using; the hook entry records that checkout's
-path.
+Installing changes your Claude Code or Codex configuration, so it is a separate, explicit step.
+Run the installer from the burnboard checkout you intend to keep: each hook records the absolute
+paths of this checkout and its current Node binary. The first command in every path below is a dry
+run; it prints the exact JSON entry without changing anything. The `--yes` command makes a
+timestamped backup, writes the entry, and validates the resulting file. Each installed entry runs
+the sensor after every tool call with a five-second timeout.
 
-You don't have to remember where you are in these steps: every time `node server.js` starts, it
-prints a short **Spin watch** status after the startup banner, one ✓ / ! / ✗ line per item (the
-Claude Code and Codex hooks and whether they point to this checkout and an existing Node binary,
-the Codex approval, when the hook last ran and any recent hook errors, your notification and nudge
-settings, and the backfill), followed by **Next steps** listing only what is still missing. When
-everything is in place it shrinks to a single “Spin watch: ready” line. The same status appears as
-copyable text at the top of the Spin watch settings in the brief. If you start the server in a
-terminal and a hook is missing or points to another checkout or a missing Node, it asks once:
-“Install (or repair) the spin watch hook now? [y/N]”. The default is no, and the dashboard keeps
-starting either way. The check itself only reads your configuration.
+##### Enable Spin watch for Codex
+
+1. From the burnboard checkout, preview and install only the Codex hook:
+
+   ```bash
+   node scripts/spin-install.js --only codex
+   node scripts/spin-install.js --yes --only codex
+   ```
+
+   This adds one `PostToolUse` entry to `~/.codex/hooks.json`. It preserves all existing hooks and
+   does not edit `~/.codex/config.toml`.
+
+2. Approve the exact hook definition. Start Codex in a terminal, even if you normally use Codex in
+   Zed, VS Code, or another editor:
+
+   ```bash
+   codex
+   ```
+
+   At the Codex prompt, type `/hooks`. Find the new or changed `PostToolUse` entry from
+   `~/.codex/hooks.json`, inspect its absolute Node and `spin-hook.js` paths, and trust/enable it.
+   Codex skips a new or changed non-managed hook until you do this. See the official
+   [Codex hook trust documentation](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks).
+   Type `/quit` when the hook shows as trusted.
+
+3. Fully restart every Codex process that should use the hook. If Codex runs inside an editor,
+   restart the editor or its Codex host—not only the visible chat. Open a fresh Codex thread and
+   ask it to perform one tool call, such as reading a file.
+
+4. Verify the Codex path:
+
+   ```bash
+   node server.js --spin-check-only
+   ```
+
+   The report should show the Codex hook installed, the Codex approval current, and Codex hook
+   activity after that tool call. If Claude Code is installed but its hook is still missing, this
+   command can exit non-zero even though the Codex lines are green. That is expected if you
+   intentionally install only Codex on a machine that also has Claude Code; otherwise complete the
+   Claude steps below.
+
+##### Enable Spin watch for Claude Code
+
+1. From the same permanent burnboard checkout, preview and install only the Claude Code hook:
+
+   ```bash
+   node scripts/spin-install.js --only claude
+   node scripts/spin-install.js --yes --only claude
+   ```
+
+   This adds one `PostToolUse` entry to `~/.claude/settings.json` and preserves all existing
+   settings and hooks. Claude Code does not use Codex's separate `/hooks` trust store.
+
+2. Quit and restart Claude Code so there is no ambiguity about whether the open session reloaded
+   `settings.json`. Open a fresh Claude Code thread and ask it to perform one tool call, such as
+   reading a file.
+
+3. Verify the Claude Code path:
+
+   ```bash
+   node server.js --spin-check-only
+   ```
+
+   The report should show the Claude Code hook installed and Claude Code hook activity after that
+   tool call. It can still exit non-zero if Codex is installed but its hook or approval is missing.
+
+##### Enable both agents in one pass
+
+Instead of running the two `--only` paths, preview and install both hook entries together:
+
+```bash
+node scripts/spin-install.js
+node scripts/spin-install.js --yes
+```
+
+Then complete Codex's `/hooks` approval, restart both agent hosts, make one tool call in each, and
+run `node server.js --spin-check-only`. When the full setup is healthy, the output shrinks to one
+`Spin watch: ready` line.
+
+##### Enable notifications and agent nudges, not just scoring
+
+Installing the hook starts local scoring, but it does not automatically send guidance to an agent.
+The default **Agent nudge → Mode** is **shadow (log only)**. To deliver nudges, start burnboard,
+open **Attention Brief → Rule controls → Spin watch settings**, and set **Agent nudge → Mode** to
+**nudge the agent**.
+
+With the defaults, **Claude Code threads can never be nudged or notified**: **Claude Code at most**
+is **watch**, while both **Agent nudge → At** and **Desktop notifications → At** start at **alert
+only**. Choose the behavior you want explicitly:
+
+- set **Claude Code at most** to **alert** to let Claude reach both alert-only channels; or
+- keep Claude capped at watch and set **Agent nudge → At** to **watch or alert** for agent nudges,
+  **Desktop notifications → At** to **watch or alert** for Windows toasts, or both.
+
+For actual agent nudges, **Agent nudge → Mode** must also be **nudge the agent** rather than the
+default **shadow (log only)**.
+
+These notification settings are read on every hook run and do not require a rescore. A nudge is
+event-driven after a tool call, not periodic; see the settings explanations below for the exact
+once-per-level behavior.
+
+##### Verify, backfill, and open the brief
+
+Every time `node server.js` starts, it prints the same **Spin watch** setup report after the startup
+banner. The report checks both hook files and their paths, the Node binary, Codex trust, last hook
+activity, recent hook errors, notification and nudge settings, and backfill status. The same
+copyable report appears at the top of **Spin watch settings** in the brief.
+
+When `node server.js` runs interactively and finds a missing or stale hook path, it offers to install
+or repair it. If both agents need attention, choose Codex, Claude Code, both, or skip; if only one
+does, answer yes or no. Skipping is always the default and does not stop the dashboard. After an
+installation, startup prints the remaining agent-specific action: trust the Codex hook through
+`/hooks` and fully restart Codex or its editor host; restart every Claude Code session or host so it
+reloads `settings.json`.
 
 ```bash
 node server.js --spin-check-only   # print the status and exit; non-zero if something is missing
 node server.js --no-spin-check     # start without the check
 ```
 
-1. **Preview and install the hook.**
+Optionally score existing transcripts so the brief has historical episodes immediately:
 
-   ```bash
-   node scripts/spin-install.js          # shows exactly what would change
-   node scripts/spin-install.js --yes    # backs up, writes, and validates
-   ```
+```bash
+node scripts/spin-backfill.js
+```
 
-   The installer makes a timestamped backup of `~/.claude/settings.json` and
-   `~/.codex/hooks.json`, adds one `PostToolUse` entry to each that runs the hook (5-second
-   timeout), keeps every existing entry (including `rtk hook` `PreToolUse` entries), and re-reads
-   both files to validate them. It never edits `~/.codex/config.toml`.
+Then start the dashboard from this same checkout:
 
-2. **Approve the hook in Codex.** Codex runs a new or changed hook only after you trust it. Start
-   Codex in a terminal:
+```bash
+node server.js            # -> http://localhost:4317
+```
 
-   ```bash
-   codex
-   ```
-
-   It reports that a hook is new and needs review (“Hooks can run outside the sandbox after you
-   trust them”). Choose **Trust all and continue**, then type `/quit`; no task is needed. Do this
-   in a terminal even if you normally use Codex inside an editor (Zed, VS Code and similar):
-   editor integrations run Codex in the background, where it cannot show the review prompt, so the
-   hook would stay silently off. The approval is saved in `~/.codex/config.toml` and applies
-   everywhere Codex runs.
-
-3. **Restart agents that were already running.** Codex reads its hooks when it starts, so restart
-   Codex, or the editor that hosts it, after approving. Claude Code normally picks up the new hook
-   in open sessions; restart any session where it doesn't fire.
-
-4. **Score your history** (optional, re-runnable) so the brief has past episodes from the start:
-
-   ```bash
-   node scripts/spin-backfill.js
-   ```
-
-5. **Start the dashboard** from the same checkout and open the brief:
-
-   ```bash
-   node server.js            # -> http://localhost:4317
-   ```
-
-   The hook keeps scoring and archiving while the dashboard is closed; the dashboard is only needed
-   to view the results.
-
-6. **Check that it works.** After an agent's next tool call, its state file appears or updates
-   under `~/.local/state/burnboard/spin/sessions/`, and `hook-errors.log` in the same folder stays
-   quiet.
+The hook keeps scoring and archiving while the dashboard is closed; the dashboard is only needed
+to view results. After an agent's next tool call, its state file appears or updates under
+`~/.local/state/burnboard/spin/sessions/`, and `hook-errors.log` in the same folder should stay
+quiet.
 
 **Moving or upgrading.** The hook entry records the absolute paths of this checkout and of the
 Node binary. After moving or re-cloning burnboard, or upgrading Node, uninstall and reinstall from
-the new location, then approve the changed hook in Codex again (step 2) and restart Codex (step 3):
+the new location, then repeat the Codex `/hooks` approval and restart every affected agent host:
 
 ```bash
 node scripts/spin-uninstall.js --yes && node scripts/spin-install.js --yes

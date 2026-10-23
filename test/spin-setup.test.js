@@ -87,8 +87,9 @@ test('hooks missing: ✗ for both, install / approve / restart steps in order, a
   assert.deepEqual(status.repair, [{ tool: 'claude', action: 'install' }, { tool: 'codex', action: 'install' }]);
   assert.match(status.text, /✗ Claude Code hook: not installed/);
   assert.match(status.text, /node scripts\/spin-install\.js --yes/);
-  assert.match(status.text, /Trust all and continue/);
-  assert.match(status.text, /Zed can't show the approval prompt/);
+  assert.match(status.text, /open `\/hooks`, review and trust\/enable the spin hook/);
+  assert.match(status.text, /Restart every Codex process/);
+  assert.match(status.text, /Restart every Claude Code session/);
 });
 
 test('a tool that is not on this computer is skipped, not reported missing', t => {
@@ -115,6 +116,8 @@ test('hook pointing to another checkout, or to a Node that is gone: ✗ and the 
   assert.deepEqual(steps(status), ['reinstall', 'restart']);
   assert.match(status.text, /spin-uninstall\.js --yes && node scripts\/spin-install\.js --yes/);
   assert.deepEqual(status.repair, [{ tool: 'claude', action: 'reinstall' }]);
+  assert.match(status.text, /Restart every Claude Code session/);
+  assert.doesNotMatch(status.text, /Restart every Codex process/);
 });
 
 test('Node path missing alone is enough to need a reinstall', t => {
@@ -207,23 +210,24 @@ test('non-TTY start prints the block without prompting', async t => {
   assert.doesNotMatch(m.read(m.claudeSettings), /spin-hook/);
 });
 
-test('terminal offer: default No changes nothing; "y" installs and repairs with backups', async t => {
+test('terminal offer: default skip changes nothing; "both" installs and repairs with backups', async t => {
   const m = machine(t, { claude: false, codex: `/no/such/node ${path.join(os.tmpdir(), 'gone-checkout', 'bin', 'spin-hook.js')} --source codex` });
   const before = { claude: m.read(m.claudeSettings), codex: m.read(m.codexHooks), toml: m.read(m.codexConfig) };
   const ask = async answer => {
-    const input = new PassThrough(), output = new PassThrough(), lines = [];
-    output.on('data', () => {});
+    const input = new PassThrough(), output = new PassThrough(), lines = []; let prompt = '';
+    output.on('data', chunk => { prompt += chunk; });
     const done = setup.startup({ input, output, interactive: true, log: line => lines.push(line), overrides: m.overrides });
     setImmediate(() => input.write(answer + '\n'));
-    return { result: await done, lines };
+    return { result: await done, lines, prompt };
   };
   const no = await ask('');
   assert.equal(no.result.asked, true);
   assert.deepEqual(no.result.installed, []);
+  assert.match(no.prompt, /\[1\] Codex \[2\] Claude Code \[3\] both \[Enter\] skip/);
   assert.equal(m.read(m.claudeSettings), before.claude);
   assert.equal(m.read(m.codexHooks), before.codex);
 
-  const yes = await ask('y');
+  const yes = await ask('both');
   assert.deepEqual(yes.result.installed, ['claude', 'codex']);
   const claude = JSON.parse(m.read(m.claudeSettings)), codex = JSON.parse(m.read(m.codexHooks));
   assert.equal(claude.model, 'opus');
@@ -233,13 +237,52 @@ test('terminal offer: default No changes nothing; "y" installs and repairs with 
   assert.ok(codex.hooks.PostToolUse[0].hooks[0].command.includes(path.join(m.here, 'bin', 'spin-hook.js')));
   assert.equal(codex.hooks.PreToolUse[0].hooks[0].command, 'rtk hook codex');
   assert.ok(fs.readdirSync(path.dirname(m.codexHooks)).some(name => name.includes('.bak-spin-')), 'backup written');
-  assert.ok(yes.lines.some(line => /Trust all and continue/.test(line)));
-  assert.ok(yes.lines.some(line => /restart Codex/i.test(line)));
+  assert.ok(yes.lines.some(line => /open `\/hooks`/.test(line)));
+  assert.ok(yes.lines.some(line => /Restart every Codex process/.test(line)));
+  assert.ok(yes.lines.some(line => /restart every Claude Code session/.test(line)));
   assert.equal(m.read(m.codexConfig), before.toml, 'config.toml is never written');
   const after = m.check();
   assert.equal(item(after, 'claude-hook').status, 'ok');
   assert.equal(item(after, 'codex-hook').status, 'ok');
   assert.equal(item(after, 'codex-approval').state, 'changed', 'the old approval no longer matches the new entry');
+});
+
+test('terminal offer can install only Codex or only Claude Code', async t => {
+  const ask = async (m, answer) => {
+    const input = new PassThrough(), output = new PassThrough(), lines = []; let prompt = '';
+    output.on('data', chunk => { prompt += chunk; });
+    const done = setup.startup({ input, output, interactive: true, log: line => lines.push(line), overrides: m.overrides });
+    setImmediate(() => input.write(answer + '\n'));
+    return { result: await done, lines, prompt };
+  };
+
+  const codex = machine(t, { claude: false, codex: false });
+  const codexResult = await ask(codex, '1');
+  assert.deepEqual(codexResult.result.installed, ['codex']);
+  assert.doesNotMatch(codex.read(codex.claudeSettings), /spin-hook/);
+  assert.match(codex.read(codex.codexHooks), /spin-hook/);
+  assert.ok(codexResult.lines.some(line => /open `\/hooks`/.test(line)));
+  assert.ok(codexResult.lines.some(line => /Restart every Codex process/.test(line)));
+  assert.ok(!codexResult.lines.some(line => /Claude Code next/.test(line)));
+
+  const claude = machine(t, { claude: false, codex: false });
+  const claudeResult = await ask(claude, '2');
+  assert.deepEqual(claudeResult.result.installed, ['claude']);
+  assert.match(claude.read(claude.claudeSettings), /spin-hook/);
+  assert.doesNotMatch(claude.read(claude.codexHooks), /spin-hook/);
+  assert.ok(claudeResult.lines.some(line => /Claude Code next: restart every Claude Code session/.test(line)));
+  assert.ok(!claudeResult.lines.some(line => /Codex next/.test(line)));
+});
+
+test('single-agent startup offer uses yes or No for that agent', async t => {
+  const m = machine(t, { claude: false, codex: true });
+  const input = new PassThrough(), output = new PassThrough(); let prompt = '';
+  output.on('data', chunk => { prompt += chunk; });
+  const done = setup.startup({ input, output, interactive: true, log: () => {}, overrides: m.overrides });
+  setImmediate(() => input.write('yes\n'));
+  const result = await done;
+  assert.deepEqual(result.installed, ['claude']);
+  assert.match(prompt, /hook for Claude Code now\? \[y\/N\]/);
 });
 
 test('--spin-check-only prints the status and exits 0 when nothing is missing, 1 otherwise', t => {
