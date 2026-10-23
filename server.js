@@ -1991,7 +1991,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const pathn = url.pathname;
 
-  if (['/investigate.js', '/investigate.css', '/flight-recorder.js', '/flight-recorder.css', '/progress.js', '/spin-activity.js'].includes(pathn)) {
+  if (['/investigate.js', '/investigate.css', '/flight-recorder.js', '/flight-recorder.css', '/progress.js', '/spin-activity.js', '/spin-help.js'].includes(pathn)) {
     res.writeHead(200, { 'Content-Type': pathn.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8', 'Cache-Control': 'no-store' });
     return fs.createReadStream(path.join(__dirname, 'lib', 'ui', path.basename(pathn)))
       .on('error', () => res.destroy()).pipe(res);

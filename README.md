@@ -211,7 +211,7 @@ uses the same 0–1 scale):
   regenerating files, lint-fix loops, review and receipt bookkeeping);
 - few new files touched;
 - the highest “round N” / “pass N” mentioned;
-- waiting and polling per action; and
+- waiting per action (calls that wait on a helper agent or a still-running command); and
 - near-repeat commands (the same command with only numbers, paths, or ids changed).
 
 The equal-weight mean is smoothed over the last three readings. **Watch** starts at 0.70 and
@@ -352,24 +352,58 @@ under **Rule controls → Spin watch settings** in the brief; the hook reads it 
 }
 ```
 
-- **Desktop notifications** are optional. With `desktop.enabled`, a level rising to `minLevel`
-  shows one Windows toast (through the built-in Windows notification API; nothing to install) naming
-  the tool, repository, session title, level, and top reasons. Clicking it opens the brief filtered
-  to spin. Each session notifies only on upward changes and at most once per cooldown.
-- **Agent nudge** is `off`, `shadow` (log the message it would send, the default), or `nudge`. In
-  nudge mode the hook adds this context once per level per session: “Spin check: *reasons*. Pause
-  and post to the user: the original goal, what is concretely left, and whether another round/gate
-  is worth it. Continue only if you can justify it.”
-- The pattern lists are regular expressions with project-neutral defaults; each list you set
-  replaces the default list, so add your own project's command names there. `ceremonyPatterns`
-  mark process-ceremony commands, `gatePatterns` name heavy gate scripts (a package, node or shell
-  invocation of one counts as a gate run), `mergePatterns` mark a successful merge, and
-  `reviewHelperPatterns` mark helper (subagent) names whose numbers count as review rounds.
-- `episodes.retentionDays` keeps archived episodes forever when `null`.
-- `activity.activeMinutes` and `activity.abandonHours` set how an open episode's card reads: active
-  while the thread's newest recorded event is at most `activeMinutes` old, then idle since that
-  time, then abandoned once `abandonHours` pass with no activity. They only change the wording, not
-  scores, so they are not part of the scorer version. Missing values use the defaults (5 and 12).
+What each setting means and how it is calculated; the brief shows the same text in each setting's
+(i) pop-up.
+
+<!-- spin-help:start (generated from lib/ui/spin-help.js by scripts/spin-help-readme.js; do not edit by hand) -->
+
+- **How the churn score is calculated.** Every 40 actions (a command or tool call, a file edit, or a helper-agent launch) spin watch takes a reading over the last three blocks of 40, about 120 actions. It measures the five signals below and compares each with the reference sessions that ship with burnboard, so each becomes “higher than X% of sessions”, a number from 0 to 1. The five are averaged with equal weight, and the churn score is the average of the last three readings, so a thread needs about 120 actions before it gets one.
+  - *Process ceremony share.* The share of recent commands that are process upkeep rather than new work: merging main back in, rebasing, pulling or fetching (git pull, git fetch, git ls-remote), worktree add, list or prune, checking a PR or CI run (gh pr view or checks, gh run view, watch or rerun, gh workflow run), regenerating files or codegen, lint-fix and format runs, snapshot updates, and review-round, receipt, attestation or changeset bookkeeping. Which commands count comes from the ceremony pattern list in spin.json, which you can change. Example: 30 such commands out of 60 is a share of 50%.
+  - *New files touched.* How many files the agent edited for the first time in this session during those ~120 actions. This signal is flipped: fewer new files is more churn-like, so an agent that edits nothing new for 120 actions scores high here.
+  - *Highest review round mentioned.* The highest round number seen so far in the session. It comes from the start (first 400 characters) of the agent’s own messages when they say “round N”, “pass N” or “rnd N”, and from helper-agent names that match the review-helper list (by default names containing review, audit, critic, verif, adversar, quality or edge) and contain a number of up to three digits. Example: “Starting review round 14” or a helper named “audit-14” counts as round 14.
+  - *Waiting per action.* How many times the agent waited, divided by the number of actions. A wait is a call that waits on a helper agent or on a command that is still running (in Claude Code: checking background output or a monitor). Example: 30 waits over 120 actions is 0.25 per action. Polling commands such as git status or sleep are not counted here; repeated, they show up as near-repeats.
+  - *Near-repeat commands.* The share of commands that repeat the “shape” of a command from the last 160 actions. The shape is the command with numbers, commit hashes, ids, temporary paths and repository or worktree paths replaced, and leading cd, export and environment settings removed. Example: “gh pr checks 812” followed later by “gh pr checks 815” is a near-repeat.
+
+- **Watch score threshold.** A thread is marked “watch” when its churn score reaches this number (default 0.70). The score looks at the agent’s last ~120 actions and measures five signals; each is compared with a reference set of past sessions, so it becomes “higher than X% of sessions”. The five are averaged with equal weight and smoothed over the last three readings: 0 means calm, 1 means as churn-like as the worst sessions on record. Example: 0.70 means the five signals sit, on average, higher than 70% of the reference sessions. Raising it means fewer false alarms but catches churn later; lowering it catches churn sooner but flags more ordinary work.
+  Rescore: yes. This setting is part of the scorer version, so after a change the brief offers “Rescore now”; threads scored before the change keep their earlier scores until you rescore.
+
+- **Alert score threshold.** A thread is marked “alert” when its churn score reaches this number (default 0.85); it must be at least the watch score. It is the same churn score as the watch threshold: the last ~120 actions, five signals each ranked against past sessions, averaged equally and smoothed over three readings, from 0 (calm) to 1 (as churn-like as the worst sessions on record). Example: 0.85 means the signals sit, on average, higher than 85% of the reference sessions. Raising it means fewer false alarms but alerts on churn later (or leaves it at watch); lowering it alerts sooner but more often on ordinary work.
+  Rescore: yes. This setting is part of the scorer version, so after a change the brief offers “Rescore now”; threads scored before the change keep their earlier scores until you rescore.
+
+- **Review round watch.** A thread is marked at least “watch” when a review round of this number or higher (default 20) appears in its recent activity, whatever its churn score. A review round is a number the agent states in its own messages as “round N”, “pass N” or “rnd N”, or a review-helper name that says so explicitly, such as “review-round-23”, “audit-r23” or “critic pass 23”. Only rounds seen in about the last 200 actions count, so an old round stops counting once the thread moves on.
+  Rescore: yes. This setting is part of the scorer version, so after a change the brief offers “Rescore now”; threads scored before the change keep their earlier scores until you rescore.
+
+- **Review round alert.** A thread is marked “alert” when a review round of this number or higher (default 40) appears in its recent activity, whatever its churn score; it must be at least the watch round. Rounds are read the same way as for the watch round: “round N”, “pass N” or “rnd N” in the agent’s messages, or an explicit round in a review-helper name, seen in about the last 200 actions. Example: an agent that writes “Starting round 41” is marked alert.
+  Rescore: yes. This setting is part of the scorer version, so after a change the brief offers “Rescore now”; threads scored before the change keep their earlier scores until you rescore.
+
+- **Same command in a row.** When the agent runs exactly the same command this many times in a row (default 5), the thread is marked “alert” and stays there for the next 80 actions. “The same” means identical text: any file edit, helper launch or different command in between restarts the count, and commands that differ only by a number don’t count here (they feed the near-repeat signal instead). Waiting and look-only commands, such as sleep, git status, gh pr checks, ls, cat, grep or reading a file, never trigger this alert: when one repeats five or more times in a row, the card reports it as waiting (“waiting: the same check 6 times in a row”) instead.
+  Rescore: yes. This setting is part of the scorer version, so after a change the brief offers “Rescore now”; threads scored before the change keep their earlier scores until you rescore.
+
+- **Claude Code at most.** The highest level a Claude Code thread can reach (default watch), because spin watch is less well calibrated on Claude Code transcripts. A Claude Code thread that would be higher is shown at this level, and its card says “capped at watch for Claude Code”. Choose calm (off) to never flag Claude Code threads, or alert to treat them like Codex. Watch out: notifications and nudges fire only at their own “At” level. If this cap is below that level (for example the defaults: capped at watch, notifications and nudges at alert only), Claude Code threads are never notified or nudged.
+  Rescore: yes. This setting is part of the scorer version, so after a change the brief offers “Rescore now”; threads scored before the change keep their earlier scores until you rescore.
+
+- **Desktop notification level.** Which level shows a Windows toast (through the built-in Windows notification API; nothing to install): alert only (default), or watch or alert. A session notifies only when its level goes up, at most once per level in each episode and never within the cooldown. The toast names the tool, repository, session title, level and top reasons, and clicking it opens the Attention Brief filtered to spin watch. Claude Code threads never go above “Claude Code at most”. If that cap is below this level, as with the defaults (cap at watch, this setting at alert only), Claude Code threads are never notified.
+  Rescore: no. This setting does not change scores, so changing it never needs a rescore.
+
+- **Notification cooldown.** The shortest gap between two toasts for the same session, in minutes (default 60; 0 means no gap). If the level rises again during the cooldown, for example from watch to alert, the toast waits: it appears on the agent’s next action after the cooldown ends, if the level is still up.
+  Rescore: no. This setting does not change scores, so changing it never needs a rescore.
+
+- **Agent nudge mode.** What spin watch tells the agent itself. Off: nothing. Shadow (default): it only writes the message it would have sent to its event log (events.jsonl), so you can see what a nudge would say. Nudge: it adds the message to the agent’s context after a tool call, once per level in each episode. It never stops or blocks the agent. The message is: “Spin check: (the top reasons). Pause and post to the user: the original goal, what is concretely left, and whether another round/gate is worth it. Continue only if you can justify it.”
+  Rescore: no. This setting does not change scores, so changing it never needs a rescore.
+
+- **Agent nudge level.** Which level sends the nudge (or, in shadow mode, logs it): alert only (default), or watch or alert. Each episode is nudged at most once per level, when its level goes up. Claude Code threads never go above “Claude Code at most”. If that cap is below this level, as with the defaults (cap at watch, this setting at alert only), Claude Code threads are never nudged.
+  Rescore: no. This setting does not change scores, so changing it never needs a rescore.
+
+- **Episode retention.** How many days archived episodes are kept. Blank (default) keeps them forever. With a number, the hook checks at most once a day and deletes episodes that ended (or were last active) more than that many days ago, along with missed callouts that old; a session’s own hand label is kept. Example: 90 keeps about three months of history.
+  Rescore: no. This setting does not change scores, so changing it never needs a rescore.
+
+- **Pattern lists.** Four lists of regular expressions, set in spin.json (the settings form does not edit them). Ceremony patterns mark process-ceremony commands; gate patterns name heavy check scripts (a package, node or shell run of one counts as a gate run, and a card can say “3 heavy gate runs in 40 min”); merge patterns mark a successful merge, which can label the episode “merged”; review-helper patterns mark helper names whose numbers count as review rounds. The built-in lists are project-neutral, and each list you set replaces its built-in list, so add your own project’s command names there.
+  Rescore: yes. This setting is part of the scorer version, so after a change the brief offers “Rescore now”; threads scored before the change keep their earlier scores until you rescore.
+
+- **Activity timers.** Set in spin.json as activity.activeMinutes (default 5) and activity.abandonHours (default 12). They only change how an open episode’s card reads: “active” while the thread’s newest recorded event is at most that many minutes old, then “idle since HH:MM”, then “abandoned” once that many hours pass with no activity.
+  Rescore: no. This setting does not change scores, so changing it never needs a rescore.
+
+<!-- spin-help:end -->
 
 #### Scorer versions and rescoring
 

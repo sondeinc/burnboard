@@ -56,6 +56,19 @@
 .fr-spin-form input[type=number] { width:70px; }.fr-spin-form button { background:var(--accent); color:var(--on-accent); border:0; border-radius:5px; padding:5px 9px; cursor:pointer; }
 .fr-spin-note { font-size:10px!important; color:var(--dim)!important; max-width:340px; }
 .fr-spin-setup { font:10px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; background:var(--bg,transparent); border:1px solid var(--border); border-radius:5px; padding:6px 8px; margin:0 0 6px; max-width:520px; }
+/* Spin watch settings "(i)" help buttons and their pop-ups (lib/ui/spin-help.js). */
+.fr-help-row { display:flex; align-items:center; gap:4px; }
+.fr-help-label { color:var(--dim); font-size:11px; padding:3px; }
+.fr-spin-form .fr-help-btn { flex:none; width:16px; height:16px; padding:0; border-radius:50%; border:1px solid var(--border); background:var(--panel); color:var(--accent); font:italic 700 10px/14px Georgia,'Times New Roman',serif; text-align:center; cursor:pointer; }
+.fr-spin-form .fr-help-btn:hover,.fr-spin-form .fr-help-btn[aria-expanded="true"] { border-color:var(--accent); background:var(--panel2); }
+.fr-spin-form .fr-help-btn:focus-visible,.fr-help-pop:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.fr-help-pop { position:fixed; z-index:1000; left:8px; top:8px; box-sizing:border-box; width:360px; max-width:calc(100vw - 16px); max-height:calc(100vh - 16px); overflow:auto; padding:9px 11px; background:var(--panel); color:var(--fg); border:1px solid var(--accent); border-radius:7px; box-shadow:0 8px 28px color-mix(in srgb, var(--bg) 55%, #000 45%); font-size:12px; line-height:1.45; text-align:left; white-space:normal; }
+.fr-help-pop[hidden] { display:none; }
+.fr-help-pop:focus { outline:none; }
+.fr-help-pop h5 { margin:0 0 5px; color:var(--accent); font-size:12px; }
+.fr-help-pop p,.fr-heading .fr-help-pop p { margin:0 0 6px; color:var(--fg); }
+.fr-help-pop ol { margin:0 0 6px; padding-left:18px; }.fr-help-pop li { margin:0 0 5px; }.fr-help-pop li b { color:var(--fg); }
+.fr-help-pop p.fr-help-rescore { margin:0; padding-top:5px; border-top:1px solid var(--border); color:var(--dim); font-size:11px; }
 /* Shared loading indicator (lib/ui/progress.js): determinate, indeterminate and error states. */
 .bb-progress { display:flex; flex-direction:column; gap:7px; padding:16px; margin:8px 0 22px; border:1px solid var(--border); background:var(--panel); border-radius:9px; max-width:640px; }
 .bb-progress-title { color:var(--accent); font:10px var(--mono); letter-spacing:1px; text-transform:uppercase; }
