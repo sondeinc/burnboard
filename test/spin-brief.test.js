@@ -37,6 +37,9 @@ test('spin rule maps archived episodes onto the finding shape', t => {
   const a = archiveDir(t);
   a.write('live', a.live);
   a.write('gone', path.join(a.dir, 'deleted.jsonl'), { level: 'watch', callouts: [{ t: start + 3000000, text: "you're churning" }] });
+  store.appendEvent(a.p, { type: 'nudge', ts: start + 1000, source: 'codex', threadId: 'live', level: 'watch', message: 'First nudge' });
+  store.appendEvent(a.p, { type: 'nudge-shadow', ts: start + 2000, source: 'codex', threadId: 'live', level: 'alert', message: 'Not delivered' });
+  store.appendEvent(a.p, { type: 'nudge', ts: start + 3000, source: 'codex', threadId: 'live', level: 'alert', message: 'Second nudge' });
   const brief = createSpinBrief({ paths: a.p });
   const findings = brief.findings({ since: start, now: start + 7200000 });
   assert.equal(findings.length, 2);
@@ -48,13 +51,22 @@ test('spin rule maps archived episodes onto the finding shape', t => {
   assert.equal(live.session, investigationKey('codex', a.live));
   assert.match(live.rationale, /churn-like pattern/); assert.match(live.uncertainty, /not proof/);
   assert.equal(live.evidence[0].session, live.session);
+  assert.deepEqual(live.spin.nudges, { count: 2, items: [
+    { t: start + 1000, level: 'watch', message: 'First nudge' },
+    { t: start + 3000, level: 'alert', message: 'Second nudge' },
+  ] });
+  assert.deepEqual(store.readNudges(a.p, { historyLimit: 1 }).get('codex:live'), {
+    count: 2, items: [{ t: start + 3000, level: 'alert', message: 'Second nudge' }],
+  }, 'the tally stays exact when the visible history is bounded');
   assert.match(ui.investigationUrl(live), /^#investigate\?session=/);
   assert.equal(gone.severity, 'medium');
   assert.equal(gone.spin.transcriptDeleted, true);
   assert.equal(gone.spin.outcome, 'user called it out');
   assert.equal(gone.session, 'spin:codex:gone');
   assert.equal(brief.findings({ since: start + 86400000, now: start + 90000000 }).length, 0, 'interval filter applies');
-  assert.equal(brief.summary({ now: start + 7200000 }).count, 2);
+  const summary = brief.summary({ now: start + 7200000 });
+  assert.equal(summary.count, 2);
+  assert.equal(summary.items.find(item => item.title === 'Thread live').nudgeCount, 2);
 });
 
 test('one card per session: other findings in the spin span nest under it; other sessions render as before', async t => {
@@ -263,6 +275,21 @@ test('spin card kickers: no "watch" level word, an Alert marker on alert cards, 
   assert.doesNotMatch(alertTop, /Spin watch/);
   for (const top of [watchTop, alertTop]) assert.match(top, /<span class="fr-outcome" data-fr-outcome="[^"]+">active<\/span>/);
   assert.match(root.innerHTML, /fr-finding fr-spin severity-high/, 'alert cards keep the alert border');
+});
+
+test('spin cards show a delivered-nudge tally, latest receipt, and expandable history', async t => {
+  const finding = spinCard('n1', 'alert');
+  finding.spin.nudges = { count: 2, items: [
+    { t: start + 1000, level: 'watch', message: 'First nudge' },
+    { t: start + 3000, level: 'alert', message: 'Second nudge' },
+  ] };
+  const root = await mountBrief(t, briefOf([finding, spinCard('n0', 'watch')]));
+  assert.match(root.innerHTML, /<details class="fr-spin-nudges"><summary>2 nudges delivered in this thread · last [^<]+ · alert<\/summary>/);
+  assert.match(root.innerHTML, /First nudge/);
+  assert.match(root.innerHTML, /Second nudge/);
+  assert.match(root.innerHTML, /0 nudges delivered in this thread/);
+  const base = { items: [{ id: 'n1', level: 'alert', outcome: 'active', nudgeCount: 1, lastNudgeAt: start + 1000 }] };
+  assert.notEqual(ui.summarySignature(base), ui.summarySignature({ items: [{ ...base.items[0], nudgeCount: 2, lastNudgeAt: start + 3000 }] }));
 });
 
 test('spin and other findings each get a subheading with a count', async t => {
