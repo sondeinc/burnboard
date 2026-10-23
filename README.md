@@ -58,7 +58,8 @@ npm install
 node server.js            # -> http://localhost:4317
 ```
 
-Options: `--port 8080`, `--root /path/to/.codex`, `--claude-root /path/to/.claude`, `--no-ai`, `--local-tokens`.
+Options: `--port 8080`, `--root /path/to/.codex`, `--claude-root /path/to/.claude`, `--no-ai`, `--local-tokens`,
+`--no-spin-check`, `--spin-check-only` (see [Installing the hook](#installing-the-hook)).
 
 `--no-ai` (or `BURNBOARD_NO_AI=1`) disables **Dive deeper**, the optional feature that runs
 a Codex or Claude Code agent to analyze the evidence behind a token-usage finding. Burnboard will
@@ -247,6 +248,22 @@ script reads the same file. Nothing is seeded without it.
 Installing changes your Claude Code and Codex configuration, so it is a separate, explicit step.
 Run these from the burnboard checkout you will keep using; the hook entry records that checkout's
 path.
+
+You don't have to remember where you are in these steps: every time `node server.js` starts, it
+prints a short **Spin watch** status after the startup banner, one ✓ / ! / ✗ line per item (the
+Claude Code and Codex hooks and whether they point to this checkout and an existing Node binary,
+the Codex approval, when the hook last ran and any recent hook errors, your notification and nudge
+settings, and the backfill), followed by **Next steps** listing only what is still missing. When
+everything is in place it shrinks to a single “Spin watch: ready” line. The same status appears as
+copyable text at the top of the Spin watch settings in the brief. If you start the server in a
+terminal and a hook is missing or points to another checkout or a missing Node, it asks once:
+“Install (or repair) the spin watch hook now? [y/N]”. The default is no, and the dashboard keeps
+starting either way. The check itself only reads your configuration.
+
+```bash
+node server.js --spin-check-only   # print the status and exit; non-zero if something is missing
+node server.js --no-spin-check     # start without the check
+```
 
 1. **Preview and install the hook.**
 
@@ -737,6 +754,7 @@ models roll up to `codex`. The source name is the fallback for model-less or fut
 | `GET /api/flight/overview?since=&rules=&archive=1` | attention brief, findings (spin first), lanes, overlaps, coverage |
 | `GET /api/spin/summary` | spin findings from the last 24 h for the header indicator |
 | `GET` / `PUT /api/spin/config` | spin watch settings (loopback only; `PUT` takes JSON and validates it) |
+| `GET /api/spin/setup` | spin watch setup status and next steps, the same check `node server.js` prints on start (read-only) |
 
 Every session record carries its raw `source` and canonical `vendor` (`"codex"` or `"claude"`).
 The aggregate endpoints accept an optional `source=` parent/vendor filter; omit it for the

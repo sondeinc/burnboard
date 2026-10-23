@@ -52,6 +52,7 @@
 .fr-spin-form fieldset { border:1px solid var(--border); border-radius:5px; margin:6px 0; padding:4px 7px; }.fr-spin-form legend { color:var(--accent); font-size:10px; }
 .fr-spin-form input[type=number] { width:70px; }.fr-spin-form button { background:var(--accent); color:var(--on-accent); border:0; border-radius:5px; padding:5px 9px; cursor:pointer; }
 .fr-spin-note { font-size:10px!important; color:var(--dim)!important; max-width:340px; }
+.fr-spin-setup { font:10px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; background:var(--bg,transparent); border:1px solid var(--border); border-radius:5px; padding:6px 8px; margin:0 0 6px; max-width:520px; }
 /* Shared loading indicator (lib/ui/progress.js): determinate, indeterminate and error states. */
 .bb-progress { display:flex; flex-direction:column; gap:7px; padding:16px; margin:8px 0 22px; border:1px solid var(--border); background:var(--panel); border-radius:9px; max-width:640px; }
 .bb-progress-title { color:var(--accent); font:10px var(--mono); letter-spacing:1px; text-transform:uppercase; }
