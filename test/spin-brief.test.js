@@ -179,6 +179,26 @@ test('nestUnderSpin keeps findings outside the spin span at top level', () => {
   assert.equal(toFinding({ threadId: 'x', source: 'codex', file: null, lastSeen: 5 }, { id: 'e', start: 1, peakLevel: 'watch', reasons: [] }, { now: 10 }).title, 'Spin watch: sustained churn-like pattern');
 });
 
+// Renders the Attention Brief in a stubbed browser and returns its root node.
+async function mountBrief(t, overview, hash = '#running', savedState = null) {
+  const node = () => ({ innerHTML: '', className: '', dataset: {}, hidden: false, classList: { toggle() {} }, addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; }, replaceWith() {}, append() {} });
+  const root = node(), board = node();
+  const saved = savedState ? { 'burnboard.flight-recorder.v1': JSON.stringify(savedState) } : {};
+  const globals = { window: { scrollX: 0, scrollY: 0, addEventListener() {}, removeEventListener() {}, scrollTo() {}, dispatchEvent() {} },
+    document: { activeElement: null, createElement: node }, localStorage: { getItem: k => saved[k] || null, setItem: (k, v) => { saved[k] = v; } },
+    location: { hash }, history: { replaceState() {} }, CSS: { escape: v => v }, requestAnimationFrame: () => {},
+    fetch: async url => ({ ok: true, json: async () => /spin\/config/.test(url) ? { config: store.validateConfig({}).config, archive: {}, hookInstalled: {} } : overview }) };
+  const previous = {};
+  for (const [k, v] of Object.entries(globals)) { previous[k] = Object.getOwnPropertyDescriptor(globalThis, k); Object.defineProperty(globalThis, k, { value: v, configurable: true, writable: true }); }
+  const fresh = require.resolve('../lib/ui/flight-recorder');
+  delete require.cache[fresh];
+  const mounted = require(fresh).mount(root, board);
+  t.after(() => { mounted.destroy(); for (const [k, d] of Object.entries(previous)) { if (d) Object.defineProperty(globalThis, k, d); else delete globalThis[k]; } });
+  await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setImmediate(resolve));
+  return root;
+}
+
 test('the Brief renders a spin card with nested findings, deleted-transcript note, and settings slot', async t => {
   const a = archiveDir(t);
   a.write('gone', path.join(a.dir, 'deleted.jsonl'), { callouts: [{ t: start + 3000000, text: "you're churning" }] });
@@ -189,22 +209,7 @@ test('the Brief renders a spin card with nested findings, deleted-transcript not
   const untitled = { ...spinFinding, id: 'untitled-spin', session: 'spin:codex:t2', sessionId: '019a9999-aaaa-bbbb-cccc-ddddeeeeffff', sessionTitle: '019a9999-aaaa-bbbb-cccc-ddddeeeeffff', supporting: [] };
   const overview = { findings: [spinFinding, titled, untitled, { id: 'plain', rule: 'long-wait', severity: 'medium', title: 'Recorded call still has no result', rationale: 'r', uncertainty: 'u', trigger: 't', evidence: [], evidenceCount: 1, session: 'other', from: start, to: start + 5 }],
     brief: [{ repo: 'app', cwd: '/repo', sessions: 1, findings: 2 }], lanes: [], overlaps: [], coverage: { availableSessions: 1, analyzedSessions: 1 }, spinCoverage: { findings: 1 } };
-  const node = () => ({ innerHTML: '', className: '', dataset: {}, hidden: false, classList: { toggle() {} }, addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; }, replaceWith() {}, append() {} });
-  const root = node(), board = node();
-  const saved = {};
-  const globals = { window: { scrollX: 0, scrollY: 0, addEventListener() {}, removeEventListener() {}, scrollTo() {}, dispatchEvent() {} },
-    document: { activeElement: null, createElement: node }, localStorage: { getItem: k => saved[k] || null, setItem: (k, v) => { saved[k] = v; } },
-    location: { hash: '#running?attention=spin' }, history: { replaceState() {} }, CSS: { escape: v => v }, requestAnimationFrame: () => {},
-    fetch: async url => ({ ok: true, json: async () => /spin\/config/.test(url) ? { config: store.validateConfig({}).config, archive: {}, hookInstalled: {} } : overview }) };
-  const previous = {};
-  for (const [k, v] of Object.entries(globals)) { previous[k] = Object.getOwnPropertyDescriptor(globalThis, k); Object.defineProperty(globalThis, k, { value: v, configurable: true, writable: true }); }
-  t.after(() => { for (const [k, d] of Object.entries(previous)) { if (d) Object.defineProperty(globalThis, k, d); else delete globalThis[k]; } });
-  const fresh = require.resolve('../lib/ui/flight-recorder');
-  delete require.cache[fresh];
-  const { mount } = require(fresh);
-  mount(root, board);
-  await new Promise(resolve => setImmediate(resolve));
-  await new Promise(resolve => setImmediate(resolve));
+  const root = await mountBrief(t, overview, '#running?attention=spin');
   assert.match(root.innerHTML, /fr-finding fr-spin severity-high/);
   assert.match(root.innerHTML, /Spin alert: review round 42 · same command 7 times in a row/);
   // The thread name is the heading, then agent · path, then the reasons line.
@@ -224,4 +229,60 @@ test('the Brief renders a spin card with nested findings, deleted-transcript not
   assert.match(root.innerHTML, /<option value="archive"/);
   assert.match(root.innerHTML, /data-fr-slot="spin-settings"/);
   assert.match(root.innerHTML, /<svg class="fr-spark"/);
+  // One "Spin watch" subheading carries the rule name; the cards no longer repeat it.
+  assert.match(root.innerHTML, /<div class="fr-subheading" data-fr-group="spin"><span class="fr-eyebrow">Churning agents<\/span><h3>Spin watch<\/h3><p>3 threads<\/p><\/div>/);
+  assert.equal(root.innerHTML.match(/data-fr-group="spin"/g).length, 1);
+  assert.doesNotMatch(root.innerHTML, /<span class="fr-rule">Spin watch/);
+  assert.doesNotMatch(root.innerHTML, /data-fr-group="other"/, 'the spin-only view has no other findings');
+});
+
+// A minimal spin finding at the given level, as the server sends it.
+const spinCard = (id, level, extra = {}) => ({ id, rule: 'spin', severity: level === 'alert' ? 'high' : 'medium', title: `Spin ${level}: review round 9`, rationale: 'r', uncertainty: 'u', trigger: 't', evidence: [], evidenceCount: 1,
+  session: `spin:codex:${id}`, sessionId: id, sessionTitle: `Thread ${id}`, from: start, to: start + 10, spin: { level, peakLevel: level, peakScore: 0.8, source: 'codex', outcome: 'active', trail: [], history: [] }, ...extra });
+const plainFinding = id => ({ id, rule: 'long-wait', severity: 'medium', title: `Recorded call ${id} still has no result`, rationale: 'r', uncertainty: 'u', trigger: 't', evidence: [], evidenceCount: 1, session: id, from: start, to: start + 5 });
+const briefOf = findings => ({ findings, brief: [], lanes: [], overlaps: [], coverage: { availableSessions: 1, analyzedSessions: 1 } });
+const cardTop = (html, id) => html.match(new RegExp(`data-finding="${id}">\\s*<div class="fr-finding-top">([\\s\\S]*?)</div>`))[1];
+
+test('spin card kickers: no "watch" level word, an Alert marker on alert cards, the activity state kept', async t => {
+  const root = await mountBrief(t, briefOf([spinCard('w1', 'watch'), spinCard('a1', 'alert')]));
+  const watchTop = cardTop(root.innerHTML, 'w1'), alertTop = cardTop(root.innerHTML, 'a1');
+  assert.doesNotMatch(watchTop, /watch/i, 'no level word and no rule name on a watch card');
+  assert.doesNotMatch(watchTop, /fr-alert-marker/);
+  assert.match(alertTop, /<span class="fr-severity fr-alert-marker">Alert<\/span>/);
+  assert.doesNotMatch(alertTop, /Spin watch/);
+  for (const top of [watchTop, alertTop]) assert.match(top, /<span class="fr-outcome" data-fr-outcome="[^"]+">active<\/span>/);
+  assert.match(root.innerHTML, /fr-finding fr-spin severity-high/, 'alert cards keep the alert border');
+});
+
+test('spin and other findings each get a subheading with a count', async t => {
+  const root = await mountBrief(t, briefOf([spinCard('s1', 'watch'), spinCard('s2', 'alert'), plainFinding('p1'), plainFinding('p2')]));
+  const html = root.innerHTML;
+  assert.match(html, /<h3>Spin watch<\/h3><p>2 threads<\/p>/);
+  assert.match(html, /<div class="fr-subheading" data-fr-group="other"><span class="fr-eyebrow">Other attention rules<\/span><h3>Other findings<\/h3><p>2 findings<\/p><\/div>/);
+  // Order: Spin watch, its cards, Other findings, the other cards.
+  const at = needle => html.indexOf(needle);
+  assert.ok(at('data-fr-group="spin"') < at('data-finding="s1"'));
+  assert.ok(Math.max(at('data-finding="s1"'), at('data-finding="s2"')) < at('data-fr-group="other"'));
+  assert.ok(at('data-fr-group="other"') < at('data-finding="p1"'));
+  // Non-spin cards still name their rule.
+  assert.match(cardTop(html, 'p1'), /<span class="fr-rule">Long waits<\/span>/);
+});
+
+test('with no spin cards the Brief shows no subheadings', async t => {
+  const plain = await mountBrief(t, briefOf([plainFinding('p1')]));
+  assert.doesNotMatch(plain.innerHTML, /fr-subheading/);
+  assert.match(plain.innerHTML, /Recorded call p1 still has no result/);
+});
+
+test('the spin-only view keeps "Spin watch" over its empty state', async t => {
+  const focused = await mountBrief(t, briefOf([plainFinding('p1')]), '#running?attention=spin');
+  assert.match(focused.innerHTML, /<h3>Spin watch<\/h3><p>0 threads<\/p><\/div><div class="fr-clear">All clear/);
+  assert.doesNotMatch(focused.innerHTML, /data-fr-group="other"/);
+});
+
+test('archived spin cards use the same subheading and count episodes per thread', async t => {
+  const root = await mountBrief(t, briefOf([spinCard('e1', 'watch'), spinCard('e2', 'watch', { session: 'spin:codex:e1' }), spinCard('e3', 'alert')]), '#running', { range: 'archive' });
+  assert.match(root.innerHTML, /every spin watch episode in the archive/, "rendered in the All time (archived) view");
+  assert.match(root.innerHTML, /<h3>Spin watch<\/h3><p>3 episodes in 2 threads<\/p>/);
+  assert.doesNotMatch(root.innerHTML, /<span class="fr-rule">Spin watch/);
 });
