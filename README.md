@@ -251,7 +251,10 @@ script reads the same file. Nothing is seeded without it.
 
 Installing changes your Claude Code or Codex configuration, so it is a separate, explicit step.
 Run the installer from the burnboard checkout you intend to keep: each hook records the absolute
-paths of this checkout and its current Node binary. The first command in every path below is a dry
+paths of this checkout and its current Node binary. A Homebrew Node is recorded by its
+`<prefix>/opt/<formula>/bin/node` path, which `brew upgrade` keeps pointing at the installed
+version, not by the versioned `Cellar` path an upgrade deletes; `--node <path>` records any other
+binary as given. The first command in every path below is a dry
 run; it prints the exact JSON entry without changing anything. The `--yes` command makes a
 timestamped backup, writes the entry, and validates the resulting file. Each installed entry runs
 the sensor after every tool call with a five-second timeout.
@@ -394,7 +397,9 @@ to view results. After an agent's next tool call, its state file appears or upda
 quiet.
 
 **Moving or upgrading.** The hook entry records the absolute paths of this checkout and of the
-Node binary. After moving or re-cloning burnboard, or upgrading Node, uninstall and reinstall from
+Node binary. A Homebrew upgrade of the same formula needs nothing: the recorded opt path follows
+it, and the setup check flags an older entry that still names a versioned `Cellar` path. After
+moving or re-cloning burnboard, or switching to another Node install, uninstall and reinstall from
 the new location, then repeat the Codex `/hooks` approval and restart every affected agent host:
 
 ```bash

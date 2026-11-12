@@ -129,6 +129,21 @@ test('Node path missing alone is enough to need a reinstall', t => {
   assert.deepEqual(steps(status), ['reinstall', 'approve', 'restart']);
 });
 
+test('a Node at a versioned Homebrew path needs a reinstall before an upgrade deletes it', { skip: process.platform === 'win32' }, t => {
+  const brew = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'burnboard-spin-brew-')));
+  t.after(() => fs.rmSync(brew, { recursive: true, force: true }));
+  const cellar = path.join(brew, 'Cellar', 'node@24', '24.22.3', 'bin', 'node');
+  fs.mkdirSync(path.dirname(cellar), { recursive: true }); fs.writeFileSync(cellar, '');
+  fs.mkdirSync(path.join(brew, 'opt')); fs.symlinkSync(path.join('..', 'Cellar', 'node@24', '24.22.3'), path.join(brew, 'opt', 'node@24'));
+  const status = machine(t, { node: cellar }).check();
+  const claude = item(status, 'claude-hook');
+  assert.equal(claude.status, 'missing');
+  assert.equal(claude.nodeExists, true);
+  assert.match(claude.text, /versioned Homebrew path/);
+  assert.ok(claude.text.includes(path.join('opt', 'node@24', 'bin', 'node')), claude.text);
+  assert.deepEqual(status.repair, [{ tool: 'claude', action: 'reinstall' }, { tool: 'codex', action: 'reinstall' }]);
+});
+
 test('Codex approval: not approved, approved, and changed since approval', t => {
   const none = machine(t, { approve: 'none' }).check();
   assert.equal(item(none, 'codex-approval').state, 'not-approved');
@@ -286,11 +301,13 @@ test('single-agent startup offer uses yes or No for that agent', async t => {
 });
 
 test('--spin-check-only prints the status and exits 0 when nothing is missing, 1 otherwise', t => {
-  const good = machine(t, { checkout: ROOT, node: process.execPath });
+  // The Node a fresh install writes: on Homebrew, the opt path, not the versioned Cellar one.
+  const installedNode = require('../lib/stable-node').stableNodePath(process.execPath);
+  const good = machine(t, { checkout: ROOT, node: installedNode });
   const ok = spawnSync(process.execPath, [path.join(ROOT, 'server.js'), '--spin-check-only'], { env: good.env, encoding: 'utf8', timeout: 20000 });
   assert.equal(ok.status, 0, ok.stdout + ok.stderr);
   assert.match(ok.stdout, /^Spin watch: ready/);
-  const bad = machine(t, { checkout: ROOT, node: process.execPath, approve: 'none' });
+  const bad = machine(t, { checkout: ROOT, node: installedNode, approve: 'none' });
   const missing = spawnSync(process.execPath, [path.join(ROOT, 'server.js'), '--spin-check-only'], { env: bad.env, encoding: 'utf8', timeout: 20000 });
   assert.equal(missing.status, 1, missing.stdout + missing.stderr);
   assert.match(missing.stdout, /✗ Codex approval: not approved yet/);
