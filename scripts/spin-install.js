@@ -8,7 +8,9 @@
 //
 // Options: --claude-settings <file> (default ~/.claude/settings.json),
 // --codex-hooks <file> (default ~/.codex/hooks.json), --hook <spin-hook.js>,
-// --node <node binary>, --only claude|codex, --claude-timeout <seconds>.
+// --node <node binary> (default: this Node, as the Homebrew opt path when it
+// runs from a versioned Cellar path), --only claude|codex,
+// --claude-timeout <seconds>.
 //
 // What it changes: one PostToolUse entry per tool that runs the hook. Existing
 // entries (including the `rtk hook` PreToolUse entries) are preserved exactly.
@@ -18,10 +20,11 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { stableNodePath } = require('../lib/stable-node');
 
 const MARKER = 'spin-hook.js';
 
-function parseArgs(argv) {
+function parseArgs(argv, execPath = process.execPath) {
   const opt = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback; };
   const home = os.homedir();
   return {
@@ -30,7 +33,7 @@ function parseArgs(argv) {
     claudeSettings: opt('--claude-settings', path.join(home, '.claude', 'settings.json')),
     codexHooks: opt('--codex-hooks', path.join(home, '.codex', 'hooks.json')),
     hook: path.resolve(opt('--hook', path.join(__dirname, '..', 'bin', 'spin-hook.js'))),
-    node: opt('--node', process.execPath),
+    node: opt('--node', stableNodePath(execPath)),
     claudeTimeout: Number(opt('--claude-timeout', 5)),
     codexTimeout: Number(opt('--codex-timeout', 5)),
   };

@@ -58,3 +58,13 @@ test('install refuses to point at a missing hook', t => {
   const c = copies(t);
   assert.throws(() => install(c.options({ yes: true, hook: path.join(c.dir, 'nope.js') }), () => {}), /hook not found/);
 });
+
+test('without --node, a versioned Homebrew node is written as the opt path an upgrade keeps', { skip: process.platform === 'win32' }, t => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'burnboard-spin-node-')));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cellar = path.join(dir, 'Cellar', 'node@24', '24.22.3', 'bin', 'node');
+  fs.mkdirSync(path.dirname(cellar), { recursive: true }); fs.writeFileSync(cellar, '');
+  fs.mkdirSync(path.join(dir, 'opt')); fs.symlinkSync(path.join('..', 'Cellar', 'node@24', '24.22.3'), path.join(dir, 'opt', 'node@24'));
+  assert.equal(parseArgs([], cellar).node, path.join(dir, 'opt', 'node@24', 'bin', 'node'));
+  assert.equal(parseArgs(['--node', cellar], cellar).node, cellar, '--node is written as given');
+});
